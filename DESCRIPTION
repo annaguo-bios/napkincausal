@@ -1,0 +1,27 @@
+Package: napkintmle
+Title: An R Package for Causal Effect Estimation in Napkin graph
+Version: 0.0.0.9000
+Authors@R: 
+    person("Anna", "Guo", 
+       email = "guo.anna617@gmail.com",
+       role = c("aut", "cre"),
+       comment = c(GitHub = "https://github.com/annaguo-bios"))
+Description: An R package for estimating causal effects in the Napkin graph. It implements the doubly robust onestep estimator and Targeted Maximum Likelihood Estimation (TMLE) estimator. It is able to incorporate machine learning algorithms via SuperLearn and allows sample splitting in model training.
+License: GPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.1.9000
+Imports:
+    dplyr,
+    SuperLearner,
+    densratio,
+    MASS,
+    utils,
+    mvtnorm
+Depends: 
+    R (>= 2.10)
+LazyData: true
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
