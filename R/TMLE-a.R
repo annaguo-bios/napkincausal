@@ -188,6 +188,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
 
 
   } # end of if-else for outcome regression fitting method
+  print("outcome regression done.")
 
   ################################################
   ############### PROPENSITY SCORE ###############
@@ -261,6 +262,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
   } # end of if-else for propensity score fitting
 
 
+  print("propensity score regression done.")
 
 
   ################################################
@@ -319,7 +321,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
 
       f.z <- function(z, truncate_lower=0, truncate_upper=1){
 
-        p.z1 <- predict(z_fit, type="response")[[1]] %>% as.vector()
+        p.z1 <- predict(z_fit, type="response")
 
         # truncation
         p.z1[p.z1 < truncate_lower] <- truncate_lower
@@ -520,6 +522,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
         # update nuisance that depend on outcome regression
         estimated <- mean(mu.xz*p.x.z)/mean(p.x.z)
         weight.X <- {(Z==z)*(mu.xz-estimated)}/{mean(p.x.z)*p.z}
+
 
 
         ######################

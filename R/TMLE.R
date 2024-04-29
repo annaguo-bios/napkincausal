@@ -117,17 +117,17 @@ napkinTMLE <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
 
 
     # run TMLE
-    tmle_output_Y1 <- out.a1$TMLE
-    tmle_output_Y0 <- out.a0$TMLE
+    TMLE_output_Y1 <- out.a1$TMLE
+    TMLE_output_Y0 <- out.a0$TMLE
 
     # run onestep
-    onestep_output_Y1 <- out.a1$Onestep
-    onestep_output_Y0 <- out.a0$Onestep
+    Onestep_output_Y1 <- out.a1$Onestep
+    Onestep_output_Y0 <- out.a0$Onestep
 
     # levels of z used for estimation
-    level.z <- sub("^out", "", names(tmle_output_Y1))
+    level.z <- sub("^out", "", names(TMLE_output_Y1))
 
-    level.z.number <- sub("^out\\.z", "", names(tmle_output_Y1))
+    level.z.number <- sub("^out\\.z", "", names(TMLE_output_Y1))
     level.z.number[level.z.number=="out.all.z"] <- "all z"
 
     output <- vector("list", 2*length(level.z)+2)
@@ -139,7 +139,7 @@ napkinTMLE <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
     # count of method
     count <- 3
 
-    for (m in c('tmle','onestep')){ # loop over TMLE and onestep
+    for (m in c('TMLE','Onestep')){ # loop over TMLE and onestep
 
         for (est in level.z){ # loop over levels of z
 
@@ -214,18 +214,18 @@ napkinTMLE <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
 
 
     # run TMLE
-    tmle_output <- out.a$TMLE
+    TMLE_output <- out.a$TMLE
 
 
     # run onestep
-    onestep_output <- out.a$Onestep
+    Onestep_output <- out.a$Onestep
 
 
     # levels of z used for estimation
-    level.z <- sub("^out", "", names(tmle_output))
+    level.z <- sub("^out", "", names(TMLE_output))
 
 
-    level.z.number <- sub("^out\\.z", "", names(tmle_output))
+    level.z.number <- sub("^out\\.z", "", names(TMLE_output))
     level.z.number[level.z.number=="out.all.z"] <- "all z"
 
     output <- vector("list", 2*length(level.z))
@@ -233,7 +233,7 @@ napkinTMLE <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
     # count of method
     count <- 1
 
-    for (m in c('tmle','onestep')){ # loop over TMLE and onestep
+    for (m in c('TMLE','Onestep')){ # loop over TMLE and onestep
 
       for (est in level.z){ # loop over levels of z
 
