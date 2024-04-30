@@ -58,3 +58,4 @@ usethis::use_data(data_Zbinary_Ybinary, overwrite = T)
 usethis::use_data(data_Zbinary_Ycontinuous, overwrite = T)
 usethis::use_data(data_Zcontinuous_Ybinary, overwrite = T)
 usethis::use_data(data_Zcontinuous_Ycontinuous, overwrite = T)
+

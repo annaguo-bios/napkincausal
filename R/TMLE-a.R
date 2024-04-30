@@ -199,7 +199,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
 
     ps_fit <- CV.SuperLearner(Y=X, X=dat_mpX, family = binomial(), V = K, SL.library = lib.X, control = list(saveFitLibrary=T),saveAll = T)
 
-    f.x.z <- function(x, z, truncate_lower=0, truncate_upper=1){
+    f.x.z <- function(x, z, truncate_lower, truncate_upper){
 
       dat_mpX.z <- dat_mpX %>% mutate(Z=z)
 
@@ -221,7 +221,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
     ps_fit <- SuperLearner(Y=X, X=dat_mpX, family = binomial(), SL.library = lib.X)
 
     # p(X=1|Z=z,W,C)
-    f.x.z <- function(x, z, truncate_lower=0, truncate_upper=1){
+    f.x.z <- function(x, z, truncate_lower, truncate_upper){
 
       dat_mpX.z <- dat_mpX %>% mutate(Z=z)
 
@@ -376,11 +376,17 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
       p.x.z <- f.x.z(x, z, truncate_lower.X, truncate_upper.X) # propensity score
       mu.xz <- f.mu.xz(x, z) # outcome regression
 
-      phi1 <- mean(mu.xz*p.x.z) # numerator of the one-step estimator
-      phi2 <- mean(p.x.z) # denominator of the one-step estimator
+      phi1 <- mean(mu.xz*p.x.z) # numerator of the plugin estimator
+      phi2 <- mean(p.x.z) # denominator of the plugin estimator
+
+      # EIF of phi1 + phi1
+      kappa1_plus_phi1 <- {(Z==z)/p.z}*{(X==x)*Y - mu.xz*p.x.z} + mu.xz*p.x.z
+
+      # EIF of phi2 + phi2
+      kappa2_plus_phi2 <- {(Z==z)/p.z}*( (X==x) - p.x.z ) + p.x.z
 
       # point estimate
-      estimated <- phi1/phi2
+      estimated <- mean(kappa1_plus_phi1)/mean(kappa2_plus_phi2)
 
       # EIF
       EIF.Y <- {(X==x)*(Z==z)}/{phi2*p.z}*(Y-mu.xz) # EIF for Y
@@ -393,7 +399,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
       lower.ci <- estimated-1.96*sqrt(mean(EIF^2)/n)
       upper.ci <- estimated+1.96*sqrt(mean(EIF^2)/n)
 
-      return(list(estimated=estimated, EIF=EIF, EIF.Y=EIF.Y, EIF.X=EIF.X, EIF.W=EIF.W, lower.ci=lower.ci, upper.ci=upper.ci))
+      return(list(estimated=estimated, EIF=EIF, EIF.Y=EIF.Y, EIF.X=EIF.X, EIF.W=EIF.W, lower.ci=lower.ci, upper.ci=upper.ci, kappa1_plus_phi1=kappa1_plus_phi1, kappa2_plus_phi2=kappa2_plus_phi2))
 
 
     }
@@ -411,7 +417,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
       ## using all levels of Z
 
       # point estimate
-      estimated=out.z1$estimated*mean(Z==1) + out.z0$estimated*mean(Z==0)
+      estimated= {mean(out.z1$kappa1_plus_phi1)*mean(Z==1) + mean(out.z0$kappa1_plus_phi1)*mean(Z==0)}/{mean(out.z1$kappa2_plus_phi2)*mean(Z==1) + mean(out.z0$kappa2_plus_phi2)*mean(Z==0)}
 
       # EIF
       EIF= out.z1$estimated*{(Z==1)-mean(Z==1)} + out.z0$estimated*{(Z==0)-mean(Z==0)} + out.z1$EIF*mean(Z==1) + out.z0$EIF*mean(Z==0)
@@ -541,7 +547,17 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
         p.x.z <- plogis(qlogis(p.x.z)+eps.X*weight.X)
 
         # update nuisance that depend on the propensity score
-        estimated <- mean(mu.xz*p.x.z)/mean(p.x.z) # point estimate
+
+        phi1 <- mean(mu.xz*p.x.z) # numerator of the plugin estimator
+        phi2 <- mean(p.x.z) # denominator of the plugin estimator
+
+        # EIF of phi1 plus phi1
+        kappa1_plus_phi1 <- {(Z==z)/p.z}*{(X==x)*Y - mu.xz*p.x.z} + mu.xz*p.x.z
+
+        # EIF of phi2 plus phi2
+        kappa2_plus_phi2 <- {(Z==z)/p.z}*( (X==x) - p.x.z ) + p.x.z
+
+        estimated <- mean(kappa1_plus_phi1)/mean(kappa2_plus_phi2) # point estimate
         weight.Y <- {(X==x)*(Z==z)}/{mean(p.x.z)*p.z} # weight for Y
 
         # EIF
@@ -564,7 +580,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
       lower.ci <- estimated-1.96*sqrt(mean(EIF^2)/n)
       upper.ci <- estimated+1.96*sqrt(mean(EIF^2)/n)
 
-      return(list(estimated=estimated, EIF=EIF, EIF.Y=EIF.Y, EIF.X=EIF.X, EIF.W=EIF.W, lower.ci=lower.ci, upper.ci=upper.ci, EDstar.record=EDstar.record))
+      return(list(estimated=estimated, EIF=EIF, EIF.Y=EIF.Y, EIF.X=EIF.X, EIF.W=EIF.W, lower.ci=lower.ci, upper.ci=upper.ci, EDstar.record=EDstar.record, kappa1_plus_phi1=kappa1_plus_phi1, kappa2_plus_phi2=kappa2_plus_phi2))
 
 
     }
@@ -584,7 +600,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
       ## using all levels of Z
 
       # point estimate
-      estimated=out.z1$estimated*mean(Z==1) + out.z0$estimated*mean(Z==0)
+      estimated={mean(out.z1$kappa1_plus_phi1)*mean(Z==1) + mean(out.z0$kappa1_plus_phi1)*mean(Z==0)}/{mean(out.z1$kappa2_plus_phi2)*mean(Z==1) + mean(out.z0$kappa2_plus_phi2)*mean(Z==0)}
 
       # EIF
       EIF= out.z1$estimated*{(Z==1)-mean(Z==1)} + out.z0$estimated*{(Z==0)-mean(Z==0)} + out.z1$EIF*mean(Z==1) + out.z0$EIF*mean(Z==0)
