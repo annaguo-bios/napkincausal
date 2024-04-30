@@ -526,7 +526,14 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
         } # end of if-else for updating mu
 
         # update nuisance that depend on outcome regression
-        estimated <- mean(mu.xz*p.x.z)/mean(p.x.z)
+        # EIF of phi1 plus phi1
+        kappa1_plus_phi1 <- {(Z==z)/p.z}*{(X==x)*Y - mu.xz*p.x.z} + mu.xz*p.x.z
+
+        # EIF of phi2 plus phi2
+        kappa2_plus_phi2 <- {(Z==z)/p.z}*( (X==x) - p.x.z ) + p.x.z
+
+        estimated <- mean(kappa1_plus_phi1)/mean(kappa2_plus_phi2) # point estimate
+
         weight.X <- {(Z==z)*(mu.xz-estimated)}/{mean(p.x.z)*p.z}
 
 
@@ -548,9 +555,6 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
 
         # update nuisance that depend on the propensity score
 
-        phi1 <- mean(mu.xz*p.x.z) # numerator of the plugin estimator
-        phi2 <- mean(p.x.z) # denominator of the plugin estimator
-
         # EIF of phi1 plus phi1
         kappa1_plus_phi1 <- {(Z==z)/p.z}*{(X==x)*Y - mu.xz*p.x.z} + mu.xz*p.x.z
 
@@ -558,6 +562,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
         kappa2_plus_phi2 <- {(Z==z)/p.z}*( (X==x) - p.x.z ) + p.x.z
 
         estimated <- mean(kappa1_plus_phi1)/mean(kappa2_plus_phi2) # point estimate
+
         weight.Y <- {(X==x)*(Z==z)}/{mean(p.x.z)*p.z} # weight for Y
 
         # EIF
