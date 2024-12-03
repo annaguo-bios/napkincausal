@@ -14,6 +14,7 @@
 #' @param W.variables A character vector indicating the parents of Z.variables.
 #' @param outcome A character string indicating the outcome variable
 #' @param covariates A character vector indicating the pre-treatment covariates in the napkin graph.
+#' @param z.density A argument that takes the user specified function for estimating the density of Z.
 #' @param z.method A character string indicating the method used to estimate the conditional density of p(Z|W,C). There are two options: 'dnorm' and 'np'. The default is 'dnorm'.
 #' If Z is binary, regression based method will be adopted. The formula of the regression can be specified by `formula.Z`.
 #' If Z is continuous, the `z.method` method will be adopted. The `dnorm` method assumes that the conditional density of Z given W and C is normal.
@@ -53,7 +54,7 @@
 #'       \item{\code{iter}}{Number of iterations where convergence is achieved for the iterative update of the mediator density and propensity score.}}
 #' @examples
 #' # E(Y(1)) estimation.
-#' res <- TMLE.a(x=1, z = NULL, data=data_Zbinary_Ycontinuous,
+#' res <- napkin.a(x=1, z = NULL, data=data_Zbinary_Ycontinuous,
 #' treatment="X", Z.variables="Z", W.variables="W", outcome="Y", covariates="C",
 #' formula.Y="Y ~ C + X*Z*W", formula.X="X ~ Z*W", formula.Z="Z~.",
 #' link.X="identity", link.Z="logit")
@@ -63,11 +64,12 @@
 #' @importFrom mvtnorm dmvnorm
 #' @importFrom densratio densratio
 #' @importFrom utils combn
-#' @importFrom stats rnorm runif rbinom dnorm dbinom binomial gaussian predict glm as.formula qlogis plogis lm coef cov sd
+#' @importFrom stats rnorm runif rbinom dnorm dbinom binomial gaussian predict glm as.formula qlogis plogis lm coef cov sd density approx
+#' @importFrom np npcdensbw npcdens
 #' @export
 
-TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome, covariates,
-                     z.method="dnorm", superlearner.Y=F, superlearner.X=F,superlearner.Z=F,
+napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome, covariates,
+                     z.density=NULL, z.method="dnorm", superlearner.Y=F, superlearner.X=F,superlearner.Z=F,
                      crossfit=F,K=5,
                      lib.Y = c("SL.glm","SL.earth","SL.ranger","SL.mean"),
                      lib.X = c("SL.glm","SL.earth","SL.ranger","SL.mean"),
@@ -77,36 +79,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
                      linkY_binary="logit", link.X="logit", link.Z="logit",
                      truncate_lower.X=0, truncate_upper.X=1,
                      truncate_lower.Z=0, truncate_upper.Z=1){
-#
-# library(dplyr)
-# library(SuperLearner)
-  # data = dt
-  # treatment = "X"
-  # Z.variables = "Z"
-  # W.variables = "W"
-  # outcome = "Y"
-  # covariates = "C"
-  # x=1
-  # z=1
-  # z.method="dnorm"
-  # superlearner=F
-  # crossfit=F
-  # K=5
-  # lib.Y = c("SL.glm","SL.earth","SL.ranger","SL.mean")
-  # lib.X = c("SL.glm","SL.earth","SL.ranger","SL.mean")
-  # lib.Z = c("SL.glm","SL.earth","SL.ranger","SL.mean")
-  # n.iter=500
-  # cvg.criteria=0.01
-  # formula.Y="Y ~ ."
-  # formula.X="X ~ ."
-  # formula.Z="Z~."
-  # linkY_binary="logit"
-  # link.X="identity"
-  # link.Z="logit"
-  # truncate_lower.X=0
-  # truncate_upper.X=1
-  # truncate_lower.Z=0
-  # truncate_upper.Z=1
+
 
   n <- nrow(data)
 
@@ -114,7 +87,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
   C <- data[,covariates, drop = F]
   X <- data[,treatment]
   W <- data[,W.variables, drop = F]
-  Z <- data[,Z.variables,drop = F]
+  Z <- data[,Z.variables]
   Y <- data[,outcome]
 
 
@@ -122,13 +95,16 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
   dat_mpY = data.frame(X,Z,W, C)
   dat_mpX = data.frame(Z,W, C)
   dat_mpZ = data.frame(W, C)
+  dat_ZmpZ = data.frame(Z,W, C)
 
-  # pre function
-  I.z <- function(i) {
-    vec <- rep(0, n)  # Create a vector of n zeros
-    vec[i] <- 1  # Set the ith element to 1
-    return(vec)
-  }
+  binaryY <- all(Y %in% c(0,1))
+
+  # # pre function
+  # I.z <- function(i) {
+  #   vec <- rep(0, n)  # Create a vector of n zeros
+  #   vec[i] <- 1  # Set the ith element to 1
+  #   return(vec)
+  # }
 
 
   ################################################
@@ -138,9 +114,9 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
 
   if (crossfit==T){ #### cross fitting + super learner #####
 
-    fit.family <- if(all(Y %in% c(0,1))){binomial(linkY_binary)}else{gaussian()} # family for super learner depending on whether Y is binary or continuous
+    fit.family <- if(binaryY){binomial(linkY_binary)}else{gaussian()} # family for super learner depending on whether Y is binary or continuous
 
-    or_fit <- CV.SuperLearner(Y=Y, X=dat_mpY, family = fit.family, V = K, SL.library = lib.Y, control = list(saveFitLibrary=T),saveAll = T)
+    or_fit <- CV.SuperLearner(Y=Y, X=dat_mpY, family = fit.family, V = K, SL.library = lib.Y, control = list(saveFitLibrary=T), saveAll = T)
 
     f.mu.xz<- function(x,z){
 
@@ -155,7 +131,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
 
   } else if (superlearner.Y==T){ #### super learner #####
 
-    fit.family <- if(all(Y %in% c(0,1))){binomial(linkY_binary)}else{gaussian()} # family for super learner depending on whether Y is binary or continuous
+    fit.family <- if(binaryY){binomial(linkY_binary)}else{gaussian()} # family for super learner depending on whether Y is binary or continuous
 
     or_fit <- SuperLearner(Y=Y, X=dat_mpY, family = fit.family, SL.library = lib.Y)
 
@@ -171,7 +147,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
 
   } else { #### simple linear regression with user input regression formula: default="Y ~ ." ####
 
-    fit.family <- if(all(Y %in% c(0,1))){binomial(linkY_binary)}else{gaussian()} # family for super learner depending on whether Y is binary or continuous
+    fit.family <- if(binaryY){binomial(linkY_binary)}else{gaussian()} # family for super learner depending on whether Y is binary or continuous
 
     or_fit <- glm(as.formula(formula.Y), data=dat_mpY, family = fit.family)
 
@@ -179,7 +155,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
 
       dat_mpY.xz <- dat_mpY %>% mutate(Z=z, X=x)
 
-      mu.Y.xz <- predict(or_fit, newdata=dat_mpY.xz)
+      mu.Y.xz <- predict(or_fit, newdata=dat_mpY.xz, type="response")
 
 
       return(mu.Y.xz)
@@ -188,6 +164,7 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
 
 
   } # end of if-else for outcome regression fitting method
+
   print("outcome regression done.")
 
   ################################################
@@ -271,9 +248,8 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
 
 
   ## If Z is binary
-  if (length(Z.variables)==1 & all(as.vector(Z[[1]]) %in% c(0,1))){
+  if (all(as.vector(Z) %in% c(0,1))){
 
-    Z <- as.vector(Z[[1]])
 
     if (crossfit==T){ #### cross fitting + super learner #####
 
@@ -341,14 +317,72 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
   ## If Z is NOT binary
   }else{
 
+    # p(Z_i)
 
-    if (z.method=="np"){
+    if (is.null(z.density)){
 
-      print('to be filled')
+      den.zi <- density(Z)
+
+      p.zi <- approx(den.zi$x, den.zi$y, xout = Z)$y
+
+    }else{
+
+      p.zi <- sapply(Z, z.density)
+
+    }
+
+    # p.zi <- 1/n
+
+    if (is.function(z.method)){
+
+      # make prediction for p(Z_i|W_i,C_i)
+      p.z <- sapply(1:n, function(i) z.method(Z.variables = Z[i], W.variables = as.vector(W[i,]), covariates = as.vector(C[i,])) )
+
+      # make prediction for p(Z_i|W_j,C_j) for both i and j from 1 to n
+      p.z.matrix <- matrix(NA, n, n)
+      for (i in 1:n) {
+
+        for (j in 1:n) {
+
+          p.z.matrix[j, i] <- z.method(Z.variables = Z[i],
+                                           W.variables = as.vector(W[j, ]),
+                                           covariates = as.vector(C[j, ]))
+        }
+      }
+
+    }else if (z.method=="np"){
+
+      ## M|A,X
+      # Methods on density estimation:
+      # np: https://cran.r-project.org/web/packages/np/np.pdf
+
+      bw <- npcdensbw(formula=as.formula(formula.Z), data=dat_ZmpZ)
+      Z_fit <- npcdens(bws=bw)
+
+      # make prediction for p(Z_i|W_i,C_i)
+      p.z <- predict(Z_fit)
+
+      # make prediction for p(Z_i|W_j,C_j) for both i and j from 1 to n
+      p.z.matrix <- matrix(NA, n, n)
+
+      for (i in 1:n) {
+
+        dat_zmpZ <- dat_ZmpZ %>% mutate(Z=Z[i])
+
+        p.z.matrix[, i] <- predict(Z_fit, newdata=dat_zmpZ)
+
+      }
+
 
     }else if (z.method=="dnorm"){
 
-      print('to be filled')
+      dnorm.density <- calculate_density_dnorm(Z.variables=Z.variables, W.variables=W.variables, covariates=covariates, data=data, formula.Z=formula.Z, superlearner.Z=superlearner.Z, crossfit=crossfit, K=K)
+
+      # make prediction for p(Z_i|W_i,C_i)
+      p.z <- dnorm.density[[1]]
+
+      # make prediction for p(Z_i|W_j,C_j) for both i and j from 1 to n
+      p.z.matrix <- dnorm.density[[2]]
 
     }else{
 
@@ -369,21 +403,139 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
   ##################################################################
 
 
-    f.onestep.xz <- function(x,z, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z){ # one-step estimate and its EIF
+  ### Binary Z ###
+
+  f.onestep.xz_binaryZ <- function(x,z, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z){ # one-step estimate and its EIF
+
+    # nuisance parameters
+    p.z <- f.z(z, truncate_lower.Z, truncate_upper.Z) # z-density
+    p.x.z <- f.x.z(x, z, truncate_lower.X, truncate_upper.X) # propensity score
+    mu.xz <- f.mu.xz(x, z) # outcome regression
+
+    phi1 <- mean(mu.xz*p.x.z) # numerator of the plugin estimator
+    phi2 <- mean(p.x.z) # denominator of the plugin estimator
+
+    # uncetered EIF of phi1
+    kappa1_plus_phi1 <- {(Z==z)/p.z}*{(X==x)*Y - mu.xz*p.x.z} + mu.xz*p.x.z
+
+    # uncentered EIF of phi2
+    kappa2_plus_phi2 <- {(Z==z)/p.z}*( (X==x) - p.x.z ) + p.x.z
+
+    plugin.est <- phi1/phi2 # plug-in estimate
+
+    # EIF
+    EIF.Y <- {(X==x)*(Z==z)}/{phi2*p.z}*(Y-mu.xz) # EIF for Y
+    EIF.X <- (Z==z)/{phi2*p.z}*(mu.xz-plugin.est)*( (X==x) - p.x.z ) # EIF for X
+    EIF.W <- 1/phi2*{mu.xz*p.x.z - plugin.est*p.x.z}
+
+    EIF <- EIF.Y + EIF.X + EIF.W
+
+    # the one-step estimator
+    estimated <- plugin.est + mean(EIF)
+
+    # confidence interval
+    lower.ci <- estimated-1.96*sqrt(mean(EIF^2)/n)
+    upper.ci <- estimated+1.96*sqrt(mean(EIF^2)/n)
+
+    return(list(estimated=estimated, EIF=EIF, EIF.Y=EIF.Y, EIF.X=EIF.X, EIF.W=EIF.W, lower.ci=lower.ci, upper.ci=upper.ci, kappa1_plus_phi1=kappa1_plus_phi1, kappa2_plus_phi2=kappa2_plus_phi2))
+
+
+  }
+
+  ### Non-binary Z ###
+  f.onestep.x_nonbinaryZ <- function(x, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z, p.z){ # one-step estimate and its EIF
+
+    # nuisance parameters
+    p.x.z <- f.x.z(x, Z, truncate_lower.X, truncate_upper.X) # propensity score
+    mu.xz <- f.mu.xz(x, Z) # outcome regression
+
+    phi1 <- sapply(1:n, function(i) mean(f.x.z(x, Z[i], truncate_lower.X, truncate_upper.X)*f.mu.xz(x, Z[i]) )) # numerator of the plugin estimator
+    phi2 <- sapply(1:n, function(i) mean(f.x.z(x, Z[i], truncate_lower.X, truncate_upper.X) )) # denominator of the plugin estimator
+
+    plugin.est <- phi1/phi2 # plug-in estimate
+
+
+    # EIF
+    EIF.Y <- {(X==x)*(p.zi)}/{phi2*p.z}*(Y-mu.xz) # EIF for Y
+    EIF.X <- (p.zi)/{phi2*p.z}*(mu.xz-plugin.est)*( (X==x) - p.x.z ) # EIF for X
+    EIF.W <- Reduce(`+`, lapply(1:n, function(i) f.x.z(x, Z[i], truncate_lower.X, truncate_upper.X)/phi2[i]*(f.mu.xz(x, Z[i]) - plugin.est[i])    ))/n
+
+    estimated <- mean(EIF.Y+EIF.X+EIF.W+plugin.est)
+
+    EIF <- EIF.Y + EIF.X + EIF.W + plugin.est - estimated
+
+    # confidence interval
+    lower.ci <- estimated-1.96*sqrt(mean(EIF^2)/n)
+    upper.ci <- estimated+1.96*sqrt(mean(EIF^2)/n)
+
+    return(list(estimated=estimated, EIF=EIF, EIF.Y=EIF.Y, EIF.X=EIF.X, EIF.W=EIF.W, lower.ci=lower.ci, upper.ci=upper.ci))
+
+
+  }
+
+  # if Z is binary, return three one-step estimators:
+  # 1. at Z=1
+  # 2. at Z=0
+  # 3. average of the two
+  binaryZ <- all(as.vector(Z) %in% c(0,1))
+
+  if (binaryZ ){
+
+    out.z1=f.onestep.xz_binaryZ(x,z=1, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z)
+    out.z0=f.onestep.xz_binaryZ(x,z=0, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z)
+
+    ## using all levels of Z
+
+    # point estimate
+    # estimated= {mean(out.z1$kappa1_plus_phi1)*mean(Z==1) + mean(out.z0$kappa1_plus_phi1)*mean(Z==0)}/{mean(out.z1$kappa2_plus_phi2)*mean(Z==1) + mean(out.z0$kappa2_plus_phi2)*mean(Z==0)}
+    # estimated = mean(out.z1$EIF*mean(Z==1)+out.z0$EIF*mean(Z==0)+Z*out.z1$estimated + (1-Z)*out.z0$estimated)
+    estimated = out.z1$estimated*mean(Z==1) + out.z0$estimated*mean(Z==0)
+
+    # EIF
+    EIF= out.z1$estimated*{(Z==1)-mean(Z==1)} + out.z0$estimated*{(Z==0)-mean(Z==0)} + out.z1$EIF*mean(Z==1) + out.z0$EIF*mean(Z==0)
+
+
+    # confidence interval
+    lower.ci <- estimated-1.96*sqrt(mean(EIF^2)/n)
+    upper.ci <- estimated+1.96*sqrt(mean(EIF^2)/n)
+
+    out.all.z = list(estimated=estimated, EIF=EIF, lower.ci=lower.ci, upper.ci=upper.ci)
+
+    onestep.out <- list(out.z1=out.z1, out.z0=out.z0, out.all.z=out.all.z)
+
+  }else{
+
+    out.all.z <- f.onestep.x_nonbinaryZ(x, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z, p.z)
+
+    onestep.out <- list(out.all.z=out.all.z)
+
+  }
+
+
+
+  ##################################################################
+  #################### Estimating Equation Estimator ###############
+  ##################################################################
+
+
+    f.equation.xz_binaryZ <- function(x,z, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z){ # one-step estimate and its EIF
 
       # nuisance parameters
       p.z <- f.z(z, truncate_lower.Z, truncate_upper.Z) # z-density
       p.x.z <- f.x.z(x, z, truncate_lower.X, truncate_upper.X) # propensity score
       mu.xz <- f.mu.xz(x, z) # outcome regression
 
-      phi1 <- mean(mu.xz*p.x.z) # numerator of the plugin estimator
-      phi2 <- mean(p.x.z) # denominator of the plugin estimator
+      # phi1 <- mean(mu.xz*p.x.z) # numerator of the plugin estimator
+      # phi2 <- mean(p.x.z) # denominator of the plugin estimator
 
-      # EIF of phi1 + phi1
+      # uncetered EIF of phi1
       kappa1_plus_phi1 <- {(Z==z)/p.z}*{(X==x)*Y - mu.xz*p.x.z} + mu.xz*p.x.z
 
-      # EIF of phi2 + phi2
+      # uncentered EIF of phi2
       kappa2_plus_phi2 <- {(Z==z)/p.z}*( (X==x) - p.x.z ) + p.x.z
+
+      phi1 <- mean(kappa1_plus_phi1) # numerator of the plugin estimator
+      phi2 <- mean(kappa2_plus_phi2) # denominator of the plugin estimator
 
       # point estimate
       estimated <- mean(kappa1_plus_phi1)/mean(kappa2_plus_phi2)
@@ -405,19 +557,21 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
     }
 
 
-    # if Z is binary, return three one-step estimators:
+    # if Z is binary, return three estimating equation based estimators:
     # 1. at Z=1
     # 2. at Z=0
     # 3. average of the two
-    if (length(Z.variables)==1 & all(as.vector(Z[[1]]) %in% c(0,1)) ){
+    if (binaryZ ){
 
-      out.z1=f.onestep.xz(x,z=1, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z)
-      out.z0=f.onestep.xz(x,z=0, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z)
+      out.z1=f.equation.xz_binaryZ(x,z=1, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z)
+      out.z0=f.equation.xz_binaryZ(x,z=0, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z)
 
       ## using all levels of Z
 
       # point estimate
-      estimated= {mean(out.z1$kappa1_plus_phi1)*mean(Z==1) + mean(out.z0$kappa1_plus_phi1)*mean(Z==0)}/{mean(out.z1$kappa2_plus_phi2)*mean(Z==1) + mean(out.z0$kappa2_plus_phi2)*mean(Z==0)}
+      # estimated= {mean(out.z1$kappa1_plus_phi1)*mean(Z==1) + mean(out.z0$kappa1_plus_phi1)*mean(Z==0)}/{mean(out.z1$kappa2_plus_phi2)*mean(Z==1) + mean(out.z0$kappa2_plus_phi2)*mean(Z==0)}
+      # estimated = mean(out.z1$EIF*mean(Z==1)+out.z0$EIF*mean(Z==0)+Z*out.z1$estimated + (1-Z)*out.z0$estimated)
+      estimated = out.z1$estimated*mean(Z==1) + out.z0$estimated*mean(Z==0)
 
       # EIF
       EIF= out.z1$estimated*{(Z==1)-mean(Z==1)} + out.z0$estimated*{(Z==0)-mean(Z==0)} + out.z1$EIF*mean(Z==1) + out.z0$EIF*mean(Z==0)
@@ -429,43 +583,12 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
 
       out.all.z = list(estimated=estimated, EIF=EIF, lower.ci=lower.ci, upper.ci=upper.ci)
 
-      onestep.out <- list(out.z1=out.z1, out.z0=out.z0, out.all.z=out.all.z)
-
-    }else{
-
-      ## using all levels of Z
-
-      # point estimate at all different levels of z
-      onestep.z <- lapply(Z, function(i) f.onestep.xz(x, z=i, truncate_lower.Z, truncate_upper.Z))
-
-      estimated.z <- unlist(lapply(onestep.z, `[[`, "estimated"))
-      EIF.z <- do.call(cbind, lapply(onestep.z, `[[`, "EIF"))
-
-      # combined the above point estimates
-      estimated = 1/n*{sum(estimated.z)}
-
-      EIF <-  colSums(  do.call(cbind, lapply(1:n, function(i) estimated.z[i]*{I.z(i)-1/n} + EIF.z[,i]/n)) )
-
-      # confidence interval
-      lower.ci <- estimated-1.96*sqrt(mean(EIF^2)/n)
-      upper.ci <- estimated+1.96*sqrt(mean(EIF^2)/n)
-
-      out.all.z = list(estimated=estimated, EIF=EIF, lower.ci=lower.ci, upper.ci=upper.ci)
-
-
-      # if the level of z is provided, the function returns an estimate at the given level of z apart from the combined estimate
-      if (!is.null(z)){
-
-        out.z <- f.onestep.xz(x,z=z, truncate_lower.Z, truncate_upper.Z)
-
-        onestep.out <- list(out.z=out.z, out.all.z=out.all.z)
-
-      }
-
-
-      onestep.out <- out.all.z
+      equation.out <- list(out.z1=out.z1, out.z0=out.z0, out.all.z=out.all.z)
 
     }
+
+  # when Z is continuous, the estimating equation based estimator is the same as the one-step estimator
+
 
 
 
@@ -474,77 +597,293 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
   ####################################################
 
     # tmle estimate and its EIF at a given level of z
-    f.tmle.xz <- function(x,z, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z){
+    f.tmle.xz_binaryZ <- function(x,z, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z){
 
       # initialize estimates
       p.x.z <- f.x.z(x, z, truncate_lower.X, truncate_upper.X) # propensity score
       p.z <- f.z(z, truncate_lower.Z, truncate_upper.Z) # z-density
       mu.xz <- f.mu.xz(x, z) # outcome regression
 
-      # initialize EDstar, the mean of EIF
-      EDstar <- 10 # random large number
+      # # initialize EDstar, the mean of EIF
+      # EDstar <- 10 # random large number
 
       # record EDstar over iterations
-      EDstar.record <- data.frame(EDstar.Y=numeric(), EDstar.X=numeric(), EDstar.W=numeric(), EDstar=numeric())
+      # EDstar.record <- data.frame(EDstar.Y=numeric(), EDstar.X=numeric(), EDstar.W=numeric(), EDstar=numeric())
 
-      # initialize iteration counter
-      iter <- 0
+      # # initialize iteration counter
+      # iter <- 0
 
 
-      while(abs(EDstar) > cvg.criteria & iter < n.iter){
+      # while(abs(EDstar) > cvg.criteria & iter < n.iter){
 
-        #############################
-        # update mu: E(Y|X=x,Z=z,W,C)
-        #############################
+      #############################
+      # update mu: E(Y|X=x,Z=z,W,C)
+      #############################
 
-        weight.Y <- {(X==x)*(Z==z)}/{mean(p.x.z)*p.z} # weight for Y
+      # weight.Y <- {(X==x)*(Z==z)}/{mean(p.x.z)*p.z} # weight for Y
+      weight.Y <- {(X==x)*(Z==z)}/{p.z} # weight for Y
 
-        if (all(Y %in% c(0,1))){ # binary Y
+      if (binaryY){ # binary Y
 
-          # one iteration
-          or_model <- glm(
-            Y ~ offset(qlogis(mu.xz))+weight.Y-1, family=binomial(), start=0
-          )
+        # one iteration
+        or_model <- glm(
+          Y ~ offset(qlogis(mu.xz))+weight.Y-1, family=binomial(), start=0
+        )
 
-          eps.Y = coef(or_model)
+        eps.Y = coef(or_model)
 
-          # updated outcome regression
-          mu.xz = plogis(qlogis(mu.xz)+eps.Y*weight.Y)
+        # updated outcome regression
+        mu.xz = plogis(qlogis(mu.xz)+eps.Y*p.z)
 
-        } else { # continuous Y
+      } else { # continuous Y
 
-          # one iteration
-          or_model <- glm(
+        # one iteration
+        or_model <- glm(
 
-            Y ~ offset(mu.xz)+1, weights = weight.Y
-          )
+          Y ~ offset(mu.xz)+1, weights = weight.Y
+        )
 
-          eps.Y <- coef(or_model)
+        eps.Y <- coef(or_model)
 
-          mu.xz <- mu.xz+eps.Y
+        mu.xz <- mu.xz+eps.Y
 
-        } # end of if-else for updating mu
+      } # end of if-else for updating mu
 
-        # update nuisance that depend on outcome regression
-        # EIF of phi1 plus phi1
-        kappa1_plus_phi1 <- {(Z==z)/p.z}*{(X==x)*Y - mu.xz*p.x.z} + mu.xz*p.x.z
+      # update nuisance that depend on outcome regression
+      # EIF of phi1 plus phi1
+      kappa1_plus_phi1 <- {(Z==z)/p.z}*{(X==x)*Y - mu.xz*p.x.z} + mu.xz*p.x.z
 
-        # EIF of phi2 plus phi2
-        kappa2_plus_phi2 <- {(Z==z)/p.z}*( (X==x) - p.x.z ) + p.x.z
+      # EIF of phi2 plus phi2
+      kappa2_plus_phi2 <- {(Z==z)/p.z}*( (X==x) - p.x.z ) + p.x.z
 
-        estimated <- mean(kappa1_plus_phi1)/mean(kappa2_plus_phi2) # point estimate
+      phi1 <- mean(kappa1_plus_phi1) # numerator of the plugin estimator
+      phi2 <- mean(kappa2_plus_phi2) # denominator of the plugin estimator
 
-        weight.X <- {(Z==z)*(mu.xz-estimated)}/{mean(p.x.z)*p.z}
+      estimated <- mean(mu.xz*p.x.z)/mean(p.x.z) # point estimate
 
+      EIF.X <- {(Z==z)*(mu.xz-estimated)}/{p.z}*( (X==x) - p.x.z )
+
+      EIF.Y <- {(X==x)*(Z==z)}/{phi2*p.z}*(Y-mu.xz) # EIF for Y
+
+
+      ######################
+      # update p(X=1|Z=z,W,C)
+      ######################
+
+      # iter <- 0
+
+      # while(abs(mean(EIF.X)) > cvg.criteria & iter < n.iter){
+
+      # derive eps3
+      ps_model <- glm(
+        (X==x)  ~ offset(qlogis(p.x.z))+mu.xz+1, family=binomial(), start=c(0,0), weights={(Z==z)/p.z}
+      )
+
+      eps.X <- coef(ps_model)
+
+
+      # updated propensity score
+      p.x.z <- plogis(qlogis(p.x.z)+eps.X[2]*mu.xz+eps.X[1])
+
+
+      # update nuisance that depend on the propensity score
+
+      # EIF of phi1 plus phi1
+      kappa1_plus_phi1 <- {(Z==z)/p.z}*{(X==x)*Y - mu.xz*p.x.z} + mu.xz*p.x.z
+
+      # EIF of phi2 plus phi2
+      kappa2_plus_phi2 <- {(Z==z)/p.z}*( (X==x) - p.x.z ) + p.x.z
+
+      estimated <- mean(mu.xz*p.x.z)/mean(p.x.z) # point estimate
+
+      EIF.X <- {(Z==z)*(mu.xz-estimated)}/{p.z}*( (X==x) - p.x.z )
+
+      # iter <- iter + 1
+
+      # }
+
+      # update nuisance that depend on the propensity score
+
+      # EIF of phi1 plus phi1
+      kappa1_plus_phi1 <- {(Z==z)/p.z}*{(X==x)*Y - mu.xz*p.x.z} + mu.xz*p.x.z
+
+      # EIF of phi2 plus phi2
+      kappa2_plus_phi2 <- {(Z==z)/p.z}*( (X==x) - p.x.z ) + p.x.z
+
+      phi2 <- mean(p.x.z) # denominator of the plugin estimator
+
+      # EIF
+      EIF.Y <- {(X==x)*(Z==z)}/{phi2*p.z}*(Y-mu.xz) # EIF for Y
+      EIF.X <- (Z==z)/{phi2*p.z}*(mu.xz-estimated)*( (X==x) - p.x.z ) # EIF for X
+      EIF.W <- 1/phi2*{mu.xz*p.x.z - estimated*p.x.z}
+
+      EIF <- EIF.Y + EIF.X + EIF.W
+
+      EDstar <- mean(EIF)
+
+
+      # confidence interval
+      lower.ci <- estimated-1.96*sqrt(mean(EIF^2)/n)
+      upper.ci <- estimated+1.96*sqrt(mean(EIF^2)/n)
+
+      # return(list(estimated=estimated, EIF=EIF, EIF.Y=EIF.Y, EIF.X=EIF.X, EIF.W=EIF.W, lower.ci=lower.ci, upper.ci=upper.ci, EDstar.record=EDstar.record, kappa1_plus_phi1=kappa1_plus_phi1, kappa2_plus_phi2=kappa2_plus_phi2))
+      return(list(estimated=estimated, EIF=EIF, EIF.Y=EIF.Y, EIF.X=EIF.X, EIF.W=EIF.W, lower.ci=lower.ci, upper.ci=upper.ci, kappa1_plus_phi1=kappa1_plus_phi1, kappa2_plus_phi2=kappa2_plus_phi2))
+
+    }
+
+
+
+  # tmle estimate and its EIF at a given level of z
+  f.tmle.x_nonbinaryZ <- function(x, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z,p.z, p.zi){
+
+    # initialize estimates
+    p.x.z <- f.x.z(x, Z, truncate_lower.X, truncate_upper.X) # propensity score
+    mu.xz <- f.mu.xz(x, Z) # outcome regression
+
+    # make prediction for p(Y_i|X=x,Z_j,W_i,C_i) for both i and j from 1 to n
+    mu.matrix <- matrix(NA, n, n)
+
+    for (i in 1:n) {
+      mu.matrix[, i] <- f.mu.xz(x, Z[i])
+    }
+
+    # make prediction for p(X=x|Z_j,W_i,C_i) for both i and j from 1 to n
+    p.x.matrix <- matrix(NA, n, n)
+
+    for (i in 1:n) {
+      p.x.matrix[, i] <- f.x.z(x, Z[i], truncate_lower.X, truncate_upper.X)
+    }
+
+    phi1 <- colMeans(mu.matrix*p.x.matrix) # numerator of the plugin estimator
+    phi2 <- colMeans(p.x.matrix) # denominator of the plugin estimator
+
+    plugin.est <- phi1/phi2 # plug-in estimate
+
+
+
+    if (binaryY){ ########################## binary Y ###########################
+
+      EIF.Y <- {(X==x)*(p.zi)}/{phi2*p.z}*(Y-mu.xz) # EIF for Y
+
+      iter.Y <- 0 # initialize iteration counter
+
+      while(abs(mean(EIF.Y)) > cvg.criteria & iter.Y < n.iter){
 
 
         ######################
         # update p(X=1|Z=z,W,C)
         ######################
 
+        EIF.X <- {(p.zi)*(mu.xz-plugin.est)}/{p.z*phi2}*( (X==x) - p.x.z )
+
+        iter.X <- 0
+
+        while(abs(mean(EIF.X)) > cvg.criteria & iter.X < n.iter){
+
+          weight.X <- {(p.zi)*(mu.xz-plugin.est)}/{p.z*phi2}
+
+          # derive eps3
+          ps_model <- glm(
+            (X==x)  ~ offset(qlogis(p.x.z))+weight.X-1, family=binomial(), start = 0
+          )
+
+          eps.X <- coef(ps_model)
+
+
+          # updated propensity score
+          p.x.z <- plogis(qlogis(p.x.z)+eps.X*weight.X)
+
+          ## update nuisance that depend on the propensity score
+
+          # update p(x|Z_j,W_i,C_i)
+          for(j in 1:n){
+
+            weight.Xj <- {(p.zi)*(mu.matrix[,j]-plugin.est[j])}/{p.z.matrix[,j]*phi2[j]}
+
+            p.x.matrix[,j] <- plogis(qlogis(p.x.matrix[,j])+eps.X*weight.Xj)
+
+          }
+
+          phi1 <- colMeans(mu.matrix*p.x.matrix) # numerator of the plugin estimator
+          phi2 <- colMeans(p.x.matrix) # denominator of the plugin estimator
+
+          plugin.est <- phi1/phi2 # plug-in estimate
+
+          EIF.X <- {(p.zi)*(mu.xz-plugin.est)}/{p.z*phi2}*( (X==x) - p.x.z )
+
+          iter <- iter + 1
+
+        }
+
+        #############################
+        # update mu: E(Y|X=x,Z=z,W,C)
+        #############################
+
+        weight.Y <- {(X==x)*(p.zi)}/{phi2*p.z} # weight for Y
+
+        # one iteration
+        or_model <- glm(
+          Y ~ offset(qlogis(mu.xz))+weight.Y-1, family=binomial(), start=0
+        )
+
+        eps.Y = coef(or_model)
+
+        # updated outcome regression
+        mu.xz = plogis(qlogis(mu.xz)+eps.Y*{(1)*(p.zi)}/{phi2*p.z})
+
+        # update nuisances that depend on the updated mu
+
+        for (j in 1:n){
+
+          weight.Yj <- {(1)*(p.zi)}/{phi2[j]*p.z.matrix[,j]}
+
+          mu.matrix[,j] <- plogis(qlogis(mu.matrix[,j])+eps.Y*weight.Yj)
+
+        }
+
+
+        phi1 <- colMeans(mu.matrix*p.x.matrix) # numerator of the plugin estimator
+        phi2 <- colMeans(p.x.matrix) # denominator of the plugin estimator
+
+        plugin.est <- phi1/phi2 # plug-in estimate
+
+        # EIF
+        EIF.Y <- {(X==x)*(p.zi)}/{phi2*p.z}*(Y-mu.xz) # EIF for Y
+
+      } # end of while loop over Y
+
+
+      EIF.Y <- {(X==x)*(p.zi)}/{phi2*p.z}*(Y-mu.xz) # EIF for Y
+      EIF.X <- (p.zi)/{phi2*p.z}*(mu.xz-plugin.est)*( (X==x) - p.x.z ) # EIF for X
+      EIF.W <- sapply(1:n, function(i) mean({p.x.matrix[i,]/phi2}*{mu.matrix[i,] - plugin.est}) )
+
+      EIF <- EIF.Y + EIF.X + EIF.W
+
+      estimated <- mean(plugin.est)
+
+
+      # confidence interval
+      lower.ci <- estimated-1.96*sqrt(mean(EIF^2)/n)
+      upper.ci <- estimated+1.96*sqrt(mean(EIF^2)/n)
+
+    }else{ ########################## continuous Y ###########################
+
+
+      ######################
+      # update p(X=1|Z=z,W,C)
+      ######################
+
+      EIF.X <- {(p.zi)*(mu.xz-plugin.est)}/{p.z*phi2}*( (X==x) - p.x.z )
+
+      iter <- 0
+
+      while(abs(mean(EIF.X)) > cvg.criteria & iter < n.iter){
+
+        weight.X <- {(p.zi)*(mu.xz-plugin.est)}/{p.z*phi2}
+
         # derive eps3
         ps_model <- glm(
-          (X==x)  ~ offset(qlogis(p.x.z))+weight.X-1, family=binomial(), start=0
+          (X==x)  ~ offset(qlogis(p.x.z))+weight.X-1, family=binomial(), start = 0
         )
 
         eps.X <- coef(ps_model)
@@ -553,42 +892,74 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
         # updated propensity score
         p.x.z <- plogis(qlogis(p.x.z)+eps.X*weight.X)
 
-        # update nuisance that depend on the propensity score
+        ## update nuisance that depend on the propensity score
 
-        # EIF of phi1 plus phi1
-        kappa1_plus_phi1 <- {(Z==z)/p.z}*{(X==x)*Y - mu.xz*p.x.z} + mu.xz*p.x.z
+        # update p(x|Z_j,W_i,C_i)
+        for(j in 1:n){
 
-        # EIF of phi2 plus phi2
-        kappa2_plus_phi2 <- {(Z==z)/p.z}*( (X==x) - p.x.z ) + p.x.z
+          weight.Xj <- {(p.zi)*(mu.matrix[,j]-plugin.est[j])}/{p.z.matrix[,j]*phi2[j]}
 
-        estimated <- mean(kappa1_plus_phi1)/mean(kappa2_plus_phi2) # point estimate
+          p.x.matrix[,j] <- plogis(qlogis(p.x.matrix[,j])+eps.X*weight.Xj)
 
-        weight.Y <- {(X==x)*(Z==z)}/{mean(p.x.z)*p.z} # weight for Y
+        }
 
-        # EIF
-        EIF.Y <- weight.Y*(Y-mu.xz) # EIF for Y
-        EIF.X <- {(Z==z)*(mu.xz-estimated)}/{mean(p.x.z)*p.z}*( (X==x) - p.x.z ) # EIF for X
-        EIF.W <- 1/mean(p.x.z)*{mu.xz*p.x.z - estimated*p.x.z}
+        phi1 <- colMeans(mu.matrix*p.x.matrix) # numerator of the plugin estimator
+        phi2 <- colMeans(p.x.matrix) # denominator of the plugin estimator
 
-        EIF <- EIF.Y + EIF.X + EIF.W
+        plugin.est <- phi1/phi2 # plug-in estimate
 
-        EDstar <- mean(EIF)
-
-        EDstar.record[(iter+1),] <- c(mean(EIF.Y), mean(EIF.X), mean(EIF.W), EDstar)
+        EIF.X <- {(p.zi)*(mu.xz-plugin.est)}/{p.z*phi2}*( (X==x) - p.x.z )
 
         iter <- iter + 1
 
       }
+
+      #############################
+      # update mu: E(Y|X=x,Z=z,W,C)
+      #############################
+
+      weight.Y <- {(X==x)*(p.zi)}/{phi2*p.z} # weight for Y
+
+      # one iteration
+      or_model <- glm(
+
+        Y ~ offset(mu.xz)+1, weights = weight.Y
+      )
+
+      eps.Y <- coef(or_model)
+
+      mu.xz <- mu.xz+eps.Y
+
+      # update nuisances that depend on the updated mu
+      mu.matrix <- mu.matrix + eps.Y
+
+      phi1 <- colMeans(mu.matrix*p.x.matrix) # numerator of the plugin estimator
+      phi2 <- colMeans(p.x.matrix) # denominator of the plugin estimator
+
+      plugin.est <- phi1/phi2 # plug-in estimate
+
+      # EIF
+      EIF.Y <- {(X==x)*(p.zi)}/{phi2*p.z}*(Y-mu.xz) # EIF for Y
+      EIF.X <- (p.zi)/{phi2*p.z}*(mu.xz-plugin.est)*( (X==x) - p.x.z ) # EIF for X
+      EIF.W <- sapply(1:n, function(i) mean({p.x.matrix[i,]/phi2}*{mu.matrix[i,] - plugin.est}) )
+
+      estimated <- mean(plugin.est)
+
+      EIF <- EIF.Y + EIF.X + EIF.W + plugin.est - estimated
 
 
       # confidence interval
       lower.ci <- estimated-1.96*sqrt(mean(EIF^2)/n)
       upper.ci <- estimated+1.96*sqrt(mean(EIF^2)/n)
 
-      return(list(estimated=estimated, EIF=EIF, EIF.Y=EIF.Y, EIF.X=EIF.X, EIF.W=EIF.W, lower.ci=lower.ci, upper.ci=upper.ci, EDstar.record=EDstar.record, kappa1_plus_phi1=kappa1_plus_phi1, kappa2_plus_phi2=kappa2_plus_phi2))
-
 
     }
+
+
+    # return(list(estimated=estimated, EIF=EIF, EIF.Y=EIF.Y, EIF.X=EIF.X, EIF.W=EIF.W, lower.ci=lower.ci, upper.ci=upper.ci, EDstar.record=EDstar.record, kappa1_plus_phi1=kappa1_plus_phi1, kappa2_plus_phi2=kappa2_plus_phi2))
+    return(list(estimated=estimated, EIF=EIF, EIF.Y=EIF.Y, EIF.X=EIF.X, EIF.W=EIF.W, lower.ci=lower.ci, upper.ci=upper.ci))
+
+  }
 
 
 
@@ -597,15 +968,18 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
     # 1. at Z=1
     # 2. at Z=0
     # 3. average of the two
-    if (length(Z.variables)==1 & all(as.vector(Z[[1]]) %in% c(0,1)) ){
+    if (binaryZ){
 
-      out.z1=f.tmle.xz(x,z=1, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z)
-      out.z0=f.tmle.xz(x,z=0, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z)
+      out.z1=f.tmle.xz_binaryZ(x,z=1, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z)
+      out.z0=f.tmle.xz_binaryZ(x,z=0, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z)
 
       ## using all levels of Z
 
       # point estimate
-      estimated={mean(out.z1$kappa1_plus_phi1)*mean(Z==1) + mean(out.z0$kappa1_plus_phi1)*mean(Z==0)}/{mean(out.z1$kappa2_plus_phi2)*mean(Z==1) + mean(out.z0$kappa2_plus_phi2)*mean(Z==0)}
+      # estimated={mean(out.z1$kappa1_plus_phi1)*mean(Z==1) + mean(out.z0$kappa1_plus_phi1)*mean(Z==0)}/{mean(out.z1$kappa2_plus_phi2)*mean(Z==1) + mean(out.z0$kappa2_plus_phi2)*mean(Z==0)}
+      # estimated = {mean(out.z1$kappa1_plus_phi1)/mean(out.z1$kappa2_plus_phi2)}*mean(Z==1) + {mean(out.z0$kappa1_plus_phi1)/mean(out.z0$kappa2_plus_phi2)}*mean(Z==0)
+      estimated = out.z1$estimated*mean(Z==1) + out.z0$estimated*mean(Z==0)
+
 
       # EIF
       EIF= out.z1$estimated*{(Z==1)-mean(Z==1)} + out.z0$estimated*{(Z==0)-mean(Z==0)} + out.z1$EIF*mean(Z==1) + out.z0$EIF*mean(Z==0)
@@ -620,44 +994,22 @@ TMLE.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome
 
     }else{
 
-      ## using all levels of Z
+      out.all.z <- f.tmle.x_nonbinaryZ(x, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z, p.z, p.zi)
 
-      # point estimate at all different levels of z
-      tmle.z <- lapply(Z, function(i) f.tmle.xz(x, z=i, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z))
-
-      estimated.z <- unlist(lapply(tmle.z, `[[`, "estimated"))
-      EIF.z <- do.call(cbind, lapply(tmle.z, `[[`, "EIF"))
-
-      # combined the above point estimates
-      estimated = 1/n*{sum(estimated.z)}
-
-      # EIF
-      EIF <-  colSums(  do.call(cbind, lapply(1:n, function(i) estimated.z[i]*{I.z(i)-1/n} + EIF.z[,i]/n)) )
-
-      # confidence interval
-      lower.ci <- estimated-1.96*sqrt(mean(EIF^2)/n)
-      upper.ci <- estimated+1.96*sqrt(mean(EIF^2)/n)
-
-      out.all.z = list(estimated=estimated, EIF=EIF, lower.ci=lower.ci, upper.ci=upper.ci)
-
-
-      # if the level of z is provided, the function returns an estimate at the given level of z apart from the combined estimate
-      if (!is.null(z)){
-
-        out.z <- f.tmle.xz(x,z=z, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z)
-
-        tmle.out <- list(out.z=out.z, out.all.z=out.all.z)
-
-      }
-
-
-      tmle.out <- out.all.z
-
+      tmle.out <- list(out.all.z=out.all.z)
     }
 
 
 
-    return(list(Onestep=onestep.out, TMLE=tmle.out))
+  ## if Z is univariate binary, return
+  # 1. one-step estimator
+  # 2. TMLE estimator
+  # 3. estimated equation
+
+  ## if Z is not univariate binary, return 1 and 2 only because the estimating equation aligns with the one-step estimator
+  out <- if(binaryZ){list(Onestep=onestep.out, TMLE=tmle.out, EstEquation=equation.out)}else{list(Onestep=onestep.out, TMLE=tmle.out)}
+
+  return(out)
 
 
 

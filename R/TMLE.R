@@ -12,6 +12,7 @@
 #' @param W.variables A character vector indicating the parents of Z.variables.
 #' @param outcome A character string indicating the outcome variable
 #' @param covariates A character vector indicating the pre-treatment covariates in the napkin graph.
+#' @param z.density A argument that takes the user specified function for estimating the density of Z.
 #' @param z.method A character string indicating the method used to estimate the conditional density of p(Z|W,C). There are two options: 'dnorm' and 'np'. The default is 'dnorm'.
 #' If Z is binary, regression based method will be adopted. The formula of the regression can be specified by `formula.Z`.
 #' If Z is continuous, the `z.method` method will be adopted. The `dnorm` method assumes that the conditional density of Z given W and C is normal.
@@ -51,7 +52,7 @@
 #'       \item{\code{iter}}{Number of iterations where convergence is achieved for the iterative update of the mediator density and propensity score.}}
 #' @examples
 #' # E(Y(1)) estimation.
-#' res <- napkinTMLE(x=1, z = NULL, data=data_Zbinary_Ycontinuous,
+#' res <- napkin_est(x=1, z = NULL, data=data_Zbinary_Ycontinuous,
 #' treatment="X", Z.variables="Z", W.variables="W", outcome="Y", covariates="C",
 #' formula.Y="Y ~ C + X*Z*W", formula.X="X ~ Z*W", formula.Z="Z~.",
 #' link.X="identity", link.Z="logit")
@@ -61,11 +62,12 @@
 #' @importFrom mvtnorm dmvnorm
 #' @importFrom densratio densratio
 #' @importFrom utils combn
-#' @importFrom stats rnorm runif rbinom dnorm dbinom binomial gaussian predict glm as.formula qlogis plogis lm coef cov sd
+#' @importFrom stats rnorm runif rbinom dnorm dbinom binomial gaussian predict glm as.formula qlogis plogis lm coef cov sd density approx
+#' @importFrom np npcdensbw npcdens
 #' @export
 
-napkinTMLE <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome, covariates,
-                       z.method="dnorm", superlearner.Y=F, superlearner.X=F,superlearner.Z=F,
+napkin_est <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome, covariates,
+                       z.density=NULL, z.method="dnorm", superlearner.Y=F, superlearner.X=F,superlearner.Z=F,
                        crossfit=F,K=5,
                        lib.Y = c("SL.glm","SL.earth","SL.ranger","SL.mean"),
                        lib.X = c("SL.glm","SL.earth","SL.ranger","SL.mean"),
@@ -80,19 +82,21 @@ napkinTMLE <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
 
   n <- nrow(data)
 
+  univariate.binaryZ <- ( length(Z.variables)==1 & all(as.vector(data[,Z.variables[1]]) %in% c(0,1)) )
+
 
   ################################## ATE
 
   if (is.vector(x) & length(x)>2){ ## Invalid input ==
 
-    print("Invalid input. Enter x=c(1,0) for Average Causal Effect estimation. Enter x=1 or x=0 for average counterfactual outcome estimation at the specified treatment level.")
+    stop("Invalid input. Enter x=c(1,0) for Average Causal Effect estimation. Enter x=1 or x=0 for average counterfactual outcome estimation at the specified treatment level.")
 
   }else if (is.vector(x) & length(x)==2){ ## ATE estimate ==
 
     ## TMLE estimator
 
-    out.a1 <- TMLE.a(x[1], z =z, data, treatment, Z.variables, W.variables, outcome, covariates,
-                       z.method = z.method, superlearner.Y = superlearner.Y, superlearner.X = superlearner.X, superlearner.Z = superlearner.Z,
+    out.a1 <- napkin.a(x[1], z =z, data, treatment, Z.variables, W.variables, outcome, covariates,
+                       z.density=z.density,z.method = z.method, superlearner.Y = superlearner.Y, superlearner.X = superlearner.X, superlearner.Z = superlearner.Z,
                        crossfit = crossfit, K = K,
                        lib.Y = lib.Y,
                        lib.X = lib.X,
@@ -103,8 +107,8 @@ napkinTMLE <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
                        truncate_lower.X = truncate_lower.X, truncate_upper.X = truncate_upper.X,
                        truncate_lower.Z = truncate_lower.Z, truncate_upper.Z = truncate_upper.Z)
 
-    out.a0 <- TMLE.a(x[2], z =z, data, treatment, Z.variables, W.variables, outcome, covariates,
-                       z.method = z.method, superlearner.Y = superlearner.Y, superlearner.X = superlearner.X, superlearner.Z = superlearner.Z,
+    out.a0 <- napkin.a(x[2], z =z, data, treatment, Z.variables, W.variables, outcome, covariates,
+                       z.density=z.density,z.method = z.method, superlearner.Y = superlearner.Y, superlearner.X = superlearner.X, superlearner.Z = superlearner.Z,
                        crossfit = crossfit, K = K,
                        lib.Y = lib.Y,
                        lib.X = lib.X,
@@ -124,13 +128,22 @@ napkinTMLE <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
     Onestep_output_Y1 <- out.a1$Onestep
     Onestep_output_Y0 <- out.a0$Onestep
 
+    if (univariate.binaryZ){
+
+      # run estimating equation
+      EstEquation_output_Y1 <- out.a1$EstEquation
+      EstEquation_output_Y0 <- out.a0$EstEquation
+
+    }
+
     # levels of z used for estimation
     level.z <- sub("^out", "", names(TMLE_output_Y1))
 
     level.z.number <- sub("^out\\.z", "", names(TMLE_output_Y1))
     level.z.number[level.z.number=="out.all.z"] <- "all z"
 
-    output <- vector("list", 2*length(level.z)+2)
+    if (univariate.binaryZ){output <- vector("list", 3*length(level.z)+2)}else{output <- vector("list", 2*length(level.z)+2)}
+    if (univariate.binaryZ){estimators <- c('TMLE','Onestep','EstEquation')}else{estimators <- c('TMLE','Onestep')}
 
     output[[1]] <- out.a1
     output[[2]] <- out.a0
@@ -139,7 +152,7 @@ napkinTMLE <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
     # count of method
     count <- 3
 
-    for (m in c('TMLE','Onestep')){ # loop over TMLE and onestep
+    for (m in estimators){ # loop over TMLE and onestep
 
         for (est in level.z){ # loop over levels of z
 
@@ -162,7 +175,7 @@ napkinTMLE <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
           ## CI
           assign(paste0('lower.ci_ATE',est), get(paste0('hat_ATE',est)) - 1.96*sqrt(mean(get(paste0('hat_EIF.ATE',est))^2)/n)) # lower CI
 
-          assign(paste0('upper.ci_ATE',est), get(paste0('hat_ATE',est)) - 1.96*sqrt(mean(get(paste0('hat_EIF.ATE',est))^2)/n)) # upper CI
+          assign(paste0('upper.ci_ATE',est), get(paste0('hat_ATE',est)) + 1.96*sqrt(mean(get(paste0('hat_EIF.ATE',est))^2)/n)) # upper CI
 
 
           # TMLE and onestep output
@@ -177,6 +190,7 @@ napkinTMLE <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
           count <- count + 1
 
           indicator <- which(level.z==est)
+
           # print estimates
           cat(paste0(m," estimated ACE for z=",level.z.number[indicator],": ",round(get(paste0(m,est))$ATE,2),"; 95% CI: (",round(get(paste0(m,est))$lower.ci,2),", ",round(get(paste0(m,est))$upper.ci,2),") \n"))
 
@@ -199,8 +213,8 @@ napkinTMLE <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
 
   if (length(x)==1) { ## E(Y^1) estimate ==
 
-    out.a <- TMLE.a(x, z =z, data, treatment, Z.variables, W.variables, outcome, covariates,
-                      z.method = z.method, superlearner.Y = superlearner.Y, superlearner.X = superlearner.X, superlearner.Z = superlearner.Z,
+    out.a <- napkin.a(x, z =z, data, treatment, Z.variables, W.variables, outcome, covariates,
+                      z.density=z.density,z.method = z.method, superlearner.Y = superlearner.Y, superlearner.X = superlearner.X, superlearner.Z = superlearner.Z,
                       crossfit = crossfit, K = K,
                       lib.Y = lib.Y,
                       lib.X = lib.X,
@@ -220,6 +234,13 @@ napkinTMLE <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
     # run onestep
     Onestep_output <- out.a$Onestep
 
+    if(univariate.binaryZ){
+
+      # run estimating equation
+      EstEquation_output <- out.a$EstEquation
+
+      }
+
 
     # levels of z used for estimation
     level.z <- sub("^out", "", names(TMLE_output))
@@ -228,12 +249,14 @@ napkinTMLE <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
     level.z.number <- sub("^out\\.z", "", names(TMLE_output))
     level.z.number[level.z.number=="out.all.z"] <- "all z"
 
-    output <- vector("list", 2*length(level.z))
+
+    if (univariate.binaryZ){output <- vector("list", 3*length(level.z))}else{output <- vector("list", 2*length(level.z))}
+    if (univariate.binaryZ){estimators <- c('TMLE','Onestep','EstEquation')}else{estimators <- c('TMLE','Onestep')}
 
     # count of method
     count <- 1
 
-    for (m in c('TMLE','Onestep')){ # loop over TMLE and onestep
+    for (m in estimators){ # loop over TMLE and onestep
 
       for (est in level.z){ # loop over levels of z
 

@@ -10,14 +10,15 @@ Description: An R package for estimating causal effects in the Napkin graph. It 
 License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.1.9000
+RoxygenNote: 7.3.2.9000
 Imports:
     dplyr,
     SuperLearner,
     densratio,
     MASS,
     utils,
-    mvtnorm
+    mvtnorm,
+    np
 Depends: 
     R (>= 2.10)
 LazyData: true
