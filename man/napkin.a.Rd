@@ -34,7 +34,11 @@ napkin.a(
   truncate_lower.X = 0,
   truncate_upper.X = 1,
   truncate_lower.Z = 0,
-  truncate_upper.Z = 1
+  truncate_upper.Z = 1,
+  minZ = -Inf,
+  maxZ = Inf,
+  verbose = T,
+  fast = T
 )
 }
 \arguments{
@@ -106,6 +110,14 @@ If the absolute of the mean of efficient influence function is less than cvg.cri
 \item{truncate_lower.Z}{The lower bound for truncation of the conditional density of Z given W and C. The default is 0, which means no truncation.}
 
 \item{truncate_upper.Z}{The upper bound for truncation of the conditional density of Z given W and C. The default is 1, which means no truncation.}
+
+\item{minZ}{The lower bound used for performing integration of Z when Z is continuous. The default is -Inf.}
+
+\item{maxZ}{The upper bound used for performing integration of Z when Z is continuous. The default is Inf.}
+
+\item{verbose}{A logical indicator determines whether the function prints out detailed progress of the estimation. The default is TRUE.}
+
+\item{fast}{A logical indicator determines whether the integration involved in the estimation is performed via \code{integrate()} function or via Monte Carlo integration. The former is lower while the later is faster. The default is TRUE.}
 }
 \value{
 Function outputs a list containing TMLE results and Onestep results. Access TMLE result via \verb{$TMLE} and access onestep result via \verb{$onestep}.

@@ -18,7 +18,8 @@ Imports:
     MASS,
     utils,
     mvtnorm,
-    np
+    np,
+    RVCompare
 Depends: 
     R (>= 2.10)
 LazyData: true

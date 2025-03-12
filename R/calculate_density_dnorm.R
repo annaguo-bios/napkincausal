@@ -141,14 +141,14 @@ calculate_density_dnorm <- function(Z.variables, W.variables, covariates, data, 
 
     z.density <- dnorm(Z, mean = predict.Z, sd = sd(model_errors))
 
-    # make prediction for p(Z_i|W_j,C_j) for both i and j from 1 to n
-    p.z.matrix <- matrix(NA, n, n)
-
-    for (i in 1:n) {
-
-      p.z.matrix[, i] <- dnorm(Z[i], mean = predict.Z, sd = sd(model_errors))
-
-    }
+    # # make prediction for p(Z_i|W_j,C_j) for both i and j from 1 to n
+    # p.z.matrix <- matrix(NA, n, n)
+    #
+    # for (i in 1:n) {
+    #
+    #   p.z.matrix[, i] <- dnorm(Z[i], mean = predict.Z, sd = sd(model_errors))
+    #
+    # }
 
     # ## make prediction for p(Z_i|W_i,C_i)
     # # model prediction
@@ -206,7 +206,9 @@ calculate_density_dnorm <- function(Z.variables, W.variables, covariates, data, 
 
   # }
 
-  return(list(z.density,p.z.matrix))
+  # return(list(z.density,p.z.matrix))
+
+    return(list(z.density))
 
 }
 
