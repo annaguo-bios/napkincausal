@@ -119,16 +119,6 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     or_fit <- CV.SuperLearner(Y=Y, X=dat_mpY, family = fit.family, V = K, SL.library = lib.Y, control = list(saveFitLibrary=T), saveAll = T)
 
-    # f.mu.xz<- function(x,z){
-    #
-    #   dat_mpY.xz <- dat_mpY %>% mutate(Z=z, X=x)
-    #
-    #   mu.Y.xz <- unlist(lapply(1:K, function(x) predict(or_fit$AllSL[[x]], newdata=dat_mpY.xz[or_fit$folds[[x]],])[[1]] %>% as.vector()))[order(unlist(lapply(1:K, function(x) or_fit$folds[[x]])))]
-    #
-    #
-    #   return(mu.Y.xz)
-    # } # end of function f.mu.xz
-
     f.mu.xzw<- function(x,z,w,c){
 
       dat_mpY.xz <- data.frame(Z=z, X=x, W=w,C=c)
@@ -146,16 +136,6 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     or_fit <- SuperLearner(Y=Y, X=dat_mpY, family = fit.family, SL.library = lib.Y)
 
-    # f.mu.xz<- function(x,z){
-    #
-    #   dat_mpY.xz <- dat_mpY %>% mutate(Z=z, X=x)
-    #
-    #   mu.Y.xz <- predict(or_fit, newdata=dat_mpY.xz)[[1]] %>% as.vector()
-    #
-    #   return(mu.Y.xz)
-    # } # end of function f.mu.xz
-
-
     f.mu.xzw<- function(x,z,w,c){
 
       dat_mpY.xz <- data.frame(Z=z, X=x, W=w,C=c)
@@ -171,17 +151,6 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
     fit.family <- if(binaryY){binomial(linkY_binary)}else{gaussian()} # family for super learner depending on whether Y is binary or continuous
 
     or_fit <- glm(as.formula(formula.Y), data=dat_mpY, family = fit.family)
-
-    # f.mu.xz <- function(x,z){
-    #
-    #   dat_mpY.xz <- dat_mpY %>% mutate(Z=z, X=x)
-    #
-    #   mu.Y.xz <- predict(or_fit, newdata=dat_mpY.xz, type="response")
-    #
-    #
-    #   return(mu.Y.xz)
-    # }
-
 
     f.mu.xzw <- function(x,z,w,c){
 
@@ -208,22 +177,6 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     ps_fit <- CV.SuperLearner(Y=X, X=dat_mpX, family = binomial(), V = K, SL.library = lib.X, control = list(saveFitLibrary=T),saveAll = T)
 
-    # f.x.z <- function(x, z, truncate_lower, truncate_upper){
-    #
-    #   dat_mpX.z <- dat_mpX %>% mutate(Z=z)
-    #
-    #   p.x1.z <- unlist(lapply(1:K, function(x) predict(ps_fit$AllSL[[x]], newdata=dat_mpX.z[ps_fit$folds[[x]],])[[1]] %>% as.vector()))[order(unlist(lapply(1:K, function(x) ps_fit$folds[[x]])))]
-    #
-    #   # truncation
-    #   p.x1.z[p.x1.z < truncate_lower] <- truncate_lower
-    #   p.x1.z[p.x1.z > truncate_upper] <- truncate_upper
-    #
-    #   p.x.z <- x*p.x1.z + (1-x)*(1-p.x1.z)
-    #
-    #   return(p.x.z)
-    #
-    # } # end of function f.pi.z
-
     f.x.zw <- function(x, z, w,c, truncate_lower, truncate_upper){
 
       dat_mpX.z <- data.frame(Z=z, W=w,C=c)
@@ -244,23 +197,6 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
   } else if (superlearner.X==T){ #### super learner #####
 
     ps_fit <- SuperLearner(Y=X, X=dat_mpX, family = binomial(), SL.library = lib.X)
-
-    # # p(X=1|Z=z,W,C)
-    # f.x.z <- function(x, z, truncate_lower, truncate_upper){
-    #
-    #   dat_mpX.z <- dat_mpX %>% mutate(Z=z)
-    #
-    #   p.x1.z <- predict(ps_fit, newdata=dat_mpX.z, type="response")[[1]] %>% as.vector()
-    #
-    #   # truncation
-    #   p.x1.z[p.x1.z < truncate_lower] <- truncate_lower
-    #   p.x1.z[p.x1.z > truncate_upper] <- truncate_upper
-    #
-    #   p.x.z <- x*p.x1.z + (1-x)*(1-p.x1.z)
-    #
-    #   return(p.x.z)
-    #
-    # } # end of function f.pi.z
 
     # p(X=1|Z=z,w,C)
     f.x.zw <- function(x, z, w, c, truncate_lower, truncate_upper){
@@ -285,21 +221,6 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     ps_fit <- glm(as.formula(formula.X), data=dat_mpX,  family = binomial(link.X))
 
-    # f.x.z <- function(x, z, truncate_lower, truncate_upper){
-    #
-    #   dat_mpX.z <- dat_mpX %>% mutate(Z=z)
-    #
-    #   p.x1.z <- predict(ps_fit, newdata=dat_mpX.z, type="response")
-    #
-    #   # truncation
-    #   p.x1.z[p.x1.z < truncate_lower] <- truncate_lower
-    #   p.x1.z[p.x1.z > truncate_upper] <- truncate_upper
-    #
-    #   p.x.z <- x*p.x1.z + (1-x)*(1-p.x1.z)
-    #
-    #   return(p.x.z)
-    #
-    # } # end of function f.pi.z
 
     f.x.zw <- function(x, z,w, c, truncate_lower, truncate_upper){
 
@@ -403,19 +324,6 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
       # make prediction for p(Z_i|W_i,C_i)
       p.z <- sapply(1:n, function(i) z.method(Z.variables = Z[i], W.variables = as.vector(W[i,]), covariates = as.vector(C[i,])) )
 
-      # # make prediction for p(Z_i|W_j,C_j) for both i and j from 1 to n, used for TMLE
-      #
-      # p.z.matrix <- matrix(NA, n, n)
-      # for (i in 1:n) {
-      #
-      #   for (j in 1:n) {
-      #
-      #     p.z.matrix[j, i] <- z.method(Z.variables = Z[i],
-      #                                      W.variables = as.vector(W[j, ]),
-      #                                      covariates = as.vector(C[j, ]))
-      #   }
-      # }
-
     }else if (z.method=="np"){
 
       ## M|A,X
@@ -428,27 +336,12 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
       # make prediction for p(Z_i|W_i,C_i)
       p.z <- predict(Z_fit)
 
-      # make prediction for p(Z_i|W_j,C_j) for both i and j from 1 to n
-      # p.z.matrix <- matrix(NA, n, n)
-      #
-      # for (i in 1:n) {
-      #
-      #   dat_zmpZ <- dat_ZmpZ %>% mutate(Z=Z[i])
-      #
-      #   p.z.matrix[, i] <- predict(Z_fit, newdata=dat_zmpZ)
-      #
-      # }
-
-
     }else if (z.method=="dnorm"){
 
       dnorm.density <- calculate_density_dnorm(Z.variables=Z.variables, W.variables=W.variables, covariates=covariates, data=data, formula.Z=formula.Z, superlearner.Z=superlearner.Z, crossfit=crossfit, K=K)
 
       # make prediction for p(Z_i|W_i,C_i)
       p.z <- dnorm.density[[1]]
-#
-#       # make prediction for p(Z_i|W_j,C_j) for both i and j from 1 to n
-#       p.z.matrix <- dnorm.density[[2]]
 
     }else{
 
@@ -704,9 +597,6 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
       p.x.z <- f.x.zw(x, z,W,C,truncate_lower.X, truncate_upper.X) # propensity score
       mu.xz <- f.mu.xzw(x, z,W,C) # outcome regression
 
-      # phi1 <- mean(mu.xz*p.x.z) # numerator of the plugin estimator
-      # phi2 <- mean(p.x.z) # denominator of the plugin estimator
-
       # uncetered EIF of phi1
       kappa1_plus_phi1 <- {(Z==z)/p.z}*{(X==x)*Y - mu.xz*p.x.z} + mu.xz*p.x.z
 
@@ -905,7 +795,6 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
       lower.ci <- estimated-1.96*sqrt(mean(EIF^2)/n)
       upper.ci <- estimated+1.96*sqrt(mean(EIF^2)/n)
 
-      # return(list(estimated=estimated, EIF=EIF, EIF.Y=EIF.Y, EIF.X=EIF.X, EIF.W=EIF.W, lower.ci=lower.ci, upper.ci=upper.ci, EDstar.record=EDstar.record, kappa1_plus_phi1=kappa1_plus_phi1, kappa2_plus_phi2=kappa2_plus_phi2))
       return(list(estimated=estimated, EIF=EIF, EIF.Y=EIF.Y, EIF.X=EIF.X, EIF.W=EIF.W, lower.ci=lower.ci, upper.ci=upper.ci, kappa1_plus_phi1=kappa1_plus_phi1, kappa2_plus_phi2=kappa2_plus_phi2))
 
     }
@@ -1233,8 +1122,6 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
       ## using all levels of Z
 
       # point estimate
-      # estimated={mean(out.z1$kappa1_plus_phi1)*mean(Z==1) + mean(out.z0$kappa1_plus_phi1)*mean(Z==0)}/{mean(out.z1$kappa2_plus_phi2)*mean(Z==1) + mean(out.z0$kappa2_plus_phi2)*mean(Z==0)}
-      # estimated = {mean(out.z1$kappa1_plus_phi1)/mean(out.z1$kappa2_plus_phi2)}*mean(Z==1) + {mean(out.z0$kappa1_plus_phi1)/mean(out.z0$kappa2_plus_phi2)}*mean(Z==0)
       estimated = out.z1$estimated*mean(Z==1) + out.z0$estimated*mean(Z==0)
 
 
