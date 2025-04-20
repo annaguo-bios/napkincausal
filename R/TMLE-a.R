@@ -46,6 +46,7 @@
 #' @param maxZ The upper bound used for performing integration of Z when Z is continuous. The default is Inf.
 #' @param verbose A logical indicator determines whether the function prints out detailed progress of the estimation. The default is TRUE.
 #' @param fast A logical indicator determines whether the integration involved in the estimation is performed via `integrate()` function or via Monte Carlo integration. The former is lower while the later is faster. The default is TRUE.
+#' @param nMC The number of Monte Carlo samples used for integration when `fast` is set to TRUE The default is 5000.
 #' @return Function outputs a list containing TMLE results and Onestep results. Access TMLE result via `$TMLE` and access onestep result via `$onestep`.
 #' \describe{
 #'       \item{\code{estimated}}{The estimated parameter of interest: \eqn{E(Y^x)}}
@@ -68,7 +69,7 @@
 #' @importFrom mvtnorm dmvnorm
 #' @importFrom densratio densratio
 #' @importFrom utils combn
-#' @importFrom stats rnorm runif rbinom dnorm dbinom binomial gaussian predict glm as.formula qlogis plogis lm coef cov sd density approx integrate
+#' @importFrom stats rnorm runif rbinom dnorm dbinom binomial gaussian predict glm as.formula qlogis plogis lm coef cov sd density approx integrate setNames
 #' @importFrom np npcdensbw npcdens
 #' @importFrom RVCompare sampleFromDensity
 #' @export
@@ -85,7 +86,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
                      truncate_lower.X=0, truncate_upper.X=1,
                      truncate_lower.Z=0, truncate_upper.Z=1,
                      minZ=-Inf,maxZ=Inf,
-                     verbose=T,fast=T){
+                     verbose=T,fast=T,nMC=5000){
 
 
 
@@ -121,7 +122,10 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     f.mu.xzw<- function(x,z,w,c){
 
-      dat_mpY.xz <- data.frame(Z=z, X=x, W=w,C=c)
+      if(is.vector(c)){c <- as.data.frame(t(c))}
+      if(is.vector(w)){w <- as.data.frame(t(w))}
+
+      dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
 
       mu.Y.xz <- unlist(lapply(1:K, function(x) predict(or_fit$AllSL[[x]], newdata=dat_mpY.xz[or_fit$folds[[x]],])[[1]] %>% as.vector()))[order(unlist(lapply(1:K, function(x) or_fit$folds[[x]])))]
 
@@ -138,7 +142,10 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     f.mu.xzw<- function(x,z,w,c){
 
-      dat_mpY.xz <- data.frame(Z=z, X=x, W=w,C=c)
+      if(is.vector(c)){c <- as.data.frame(t(c))}
+      if(is.vector(w)){w <- as.data.frame(t(w))}
+
+      dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
 
       mu.Y.xz <- predict(or_fit, newdata=dat_mpY.xz)[[1]] %>% as.vector()
 
@@ -154,7 +161,10 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     f.mu.xzw <- function(x,z,w,c){
 
-      dat_mpY.xz <- data.frame(Z=z, X=x, W=w, C=c)
+      if(is.vector(c)){c <- as.data.frame(t(c))}
+      if(is.vector(w)){w <- as.data.frame(t(w))}
+
+      dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
 
       mu.Y.xz <- predict(or_fit, newdata=dat_mpY.xz, type="response")
 
@@ -179,7 +189,10 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     f.x.zw <- function(x, z, w,c, truncate_lower, truncate_upper){
 
-      dat_mpX.z <- data.frame(Z=z, W=w,C=c)
+      if(is.vector(c)){c <- as.data.frame(t(c))}
+      if(is.vector(w)){w <- as.data.frame(t(w))}
+
+      dat_mpX.z <- data.frame(Z=z, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
 
       p.x1.z <- unlist(lapply(1:K, function(x) predict(ps_fit$AllSL[[x]], newdata=dat_mpX.z[ps_fit$folds[[x]],])[[1]] %>% as.vector()))[order(unlist(lapply(1:K, function(x) ps_fit$folds[[x]])))]
 
@@ -201,7 +214,10 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
     # p(X=1|Z=z,w,C)
     f.x.zw <- function(x, z, w, c, truncate_lower, truncate_upper){
 
-      dat_mpX.z <- data.frame(Z=z, W=w , C=c)
+      if(is.vector(c)){c <- as.data.frame(t(c))}
+      if(is.vector(w)){w <- as.data.frame(t(w))}
+
+      dat_mpX.z <- data.frame(Z=z, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
 
       p.x1.z <- predict(ps_fit, newdata=dat_mpX.z, type="response")[[1]] %>% as.vector()
 
@@ -224,8 +240,10 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     f.x.zw <- function(x, z,w, c, truncate_lower, truncate_upper){
 
-      dat_mpX.z <- data.frame(Z=z, W=w, C=c)
+      if(is.vector(c)){c <- as.data.frame(t(c))}
+      if(is.vector(w)){w <- as.data.frame(t(w))}
 
+      dat_mpX.z <- data.frame(Z=z, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
       p.x1.z <- predict(ps_fit, newdata=dat_mpX.z, type="response")
 
       # truncation
@@ -457,23 +475,39 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
     # used to calculate the EIF for W and plugin estimator FASTLY
     fast.EIF.W <- function(Zsim){
 
-      W_stacked <- W[rep(seq_len(n), times = n), ]
-      C_stacked <- C[rep(seq_len(n), times = n), ]
+      # W_stacked <- W[rep(seq_len(n), times = nMC), ]
+      # C_stacked <- C[rep(seq_len(n), times = nMC), ]
+      #
+      # pi.Zsim <- f.x.zw(x, rep(Zsim,each=n),W_stacked,C_stacked, truncate_lower.X, truncate_upper.X)
+      # mu.Zsim <- f.mu.xzw(x, rep(Zsim,each=n),W_stacked,C_stacked)
+      #
+      # phi1.Zsim.long <- pi.Zsim*mu.Zsim
+      # phi1.Zsim <- rowMeans(matrix(phi1.Zsim.long, nrow=n, byrow = T))
+      #
+      # phi2.Zsim.long <- pi.Zsim
+      # phi2.Zsim <- rowMeans(matrix(phi2.Zsim.long, nrow=n, byrow = T))
 
-      pi.Zsim <- f.x.zw(x, rep(Zsim,each=n),W_stacked,C_stacked, truncate_lower.X, truncate_upper.X)
-      mu.Zsim <- f.mu.xzw(x, rep(Zsim,each=n),W_stacked,C_stacked)
+      mu.matrix.sim <- matrix(NA, n, nMC)
 
-      phi1.Zsim.long <- pi.Zsim*mu.Zsim
-      phi1.Zsim <- rowMeans(matrix(phi1.Zsim.long, nrow=n, byrow = T))
+      for (i in 1:nMC) { # the columns are the predictions for p(Y_i|X=x,Z_j,W_i,C_i) for i from 1 to n, Z_j in Zsim
+        mu.matrix.sim[, i] <- f.mu.xzw(x, Zsim[i],W,C)
+      }
 
-      phi2.Zsim.long <- pi.Zsim
-      phi2.Zsim <- rowMeans(matrix(phi2.Zsim.long, nrow=n, byrow = T))
+      p.x.matrix.sim <- matrix(NA, n, nMC)
 
-      plugin.est.z <- phi1.Zsim/phi2.Zsim
+      for (i in 1:nMC) { # the columns are the predictions for p(X=x|Z_j,W_i,C_i) for i from 1 to n, Z_j in Zsim
+        p.x.matrix.sim[, i] <- f.x.zw(x, Zsim[i],W,C, truncate_lower.X, truncate_upper.X)
+      }
 
-      EIF.W <- matrix(phi1.Zsim.long, nrow=n, byrow = T)/phi2.Zsim - matrix(phi2.Zsim.long, nrow=n, byrow = T)*(plugin.est.z/phi2.Zsim)
+      phi1.sim <- colMeans(mu.matrix.sim*p.x.matrix.sim) # numerator of the plugin estimator
+      phi2.sim <- colMeans(p.x.matrix.sim) # denominator of the plugin estimator
 
-      return(list(EIF.W=EIF.W, plugin.est.z=plugin.est.z))
+      plugin.est.sim <- phi1.sim/phi2.sim # plug-in estimate
+
+      # EIF.W <- matrix(phi1.Zsim.long, nrow=n, byrow = T)/phi2.Zsim - matrix(phi2.Zsim.long, nrow=n, byrow = T)*(plugin.est.z/phi2.Zsim)
+      EIF.W <- rowMeans(sweep(p.x.matrix.sim*sweep(mu.matrix.sim, 2, plugin.est.sim, "-"),2, phi2.sim,"/"))
+
+      return(list(EIF.W=EIF.W, plugin.est.z=plugin.est.sim))
 
     }
 
@@ -498,7 +532,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
         if(verbose){cat("Fast integration used. Integration computed with Monte Carlo integration method.")}
 
-        Zsim <- sampleFromDensity(z.density, n, range(Z))
+        Zsim <- sampleFromDensity(z.density, nMC, range(Z))
 
         fast.object <- fast.EIF.W(Zsim)
 
@@ -828,17 +862,17 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
     plugin.est <- phi1/phi2 # plug-in estimate
 
     ## create mu.matrx and p.x.matrix for Zsim
-    Zsim <- sampleFromDensity(z.density, n, range(Z))
+    Zsim <- sampleFromDensity(z.density, nMC, range(Z))
 
-    mu.matrix.sim <- matrix(NA, n, n)
+    mu.matrix.sim <- matrix(NA, n, nMC)
 
-    for (i in 1:n) { # the columns are the predictions for p(Y_i|X=x,Z_j,W_i,C_i) for i from 1 to n, Z_j in Zsim
+    for (i in 1:nMC) { # the columns are the predictions for p(Y_i|X=x,Z_j,W_i,C_i) for i from 1 to n, Z_j in Zsim
       mu.matrix.sim[, i] <- f.mu.xzw(x, Zsim[i],W,C)
     }
 
-    p.x.matrix.sim <- matrix(NA, n, n)
+    p.x.matrix.sim <- matrix(NA, n, nMC)
 
-    for (i in 1:n) { # the columns are the predictions for p(X=x|Z_j,W_i,C_i) for i from 1 to n, Z_j in Zsim
+    for (i in 1:nMC) { # the columns are the predictions for p(X=x|Z_j,W_i,C_i) for i from 1 to n, Z_j in Zsim
       p.x.matrix.sim[, i] <- f.x.zw(x, Zsim[i],W,C, truncate_lower.X, truncate_upper.X)
     }
 
@@ -899,7 +933,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
           plugin.est <- phi1/phi2 # plug-in estimate
 
           # updated propensity score for Zsim  pi matrix
-          for (j in 1:n){
+          for (j in 1:nMC){
 
             covariate.Xj <- (mu.matrix.sim[,j]-plugin.est.sim[j])/phi2.sim[j]
 
@@ -1009,7 +1043,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
         plugin.est <- phi1/phi2 # plug-in estimate
 
         # updated propensity score for Zsim  pi matrix
-        for (j in 1:n){
+        for (j in 1:nMC){
 
           covariate.Xj <- (mu.matrix.sim[,j]-plugin.est.sim[j])/phi2.sim[j]
 

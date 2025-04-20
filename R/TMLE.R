@@ -44,6 +44,7 @@
 #' @param maxZ The upper bound used for performing integration of Z when Z is continuous. The default is Inf.
 #' @param verbose A logical indicator determines whether the function prints out detailed progress of the estimation. The default is TRUE.
 #' @param fast A logical indicator determines whether the integration involved in the estimation is performed via `integrate()` function or via Monte Carlo integration. The former is lower while the later is faster. The default is TRUE.
+#' @param nMC The number of Monte Carlo samples used for integration when `fast` is set to TRUE The default is 5000.
 #' @return Function outputs a list containing TMLE results (and Onestep results if 'onestep=T' is specified). When 'a=c(1,0)', function also outputs corresponding results on \eqn{E(Y^1)} and \eqn{E(Y^0)}:
 #' \describe{
 #'       \item{\code{estimated}}{The estimated parameter of interest: \eqn{E(Y^x)}}
@@ -66,7 +67,7 @@
 #' @importFrom mvtnorm dmvnorm
 #' @importFrom densratio densratio
 #' @importFrom utils combn
-#' @importFrom stats rnorm runif rbinom dnorm dbinom binomial gaussian predict glm as.formula qlogis plogis lm coef cov sd density approx integrate
+#' @importFrom stats rnorm runif rbinom dnorm dbinom binomial gaussian predict glm as.formula qlogis plogis lm coef cov sd density approx integrate setNames
 #' @importFrom np npcdensbw npcdens
 #' @export
 
@@ -82,7 +83,7 @@ napkin_est <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
                        truncate_lower.X=0, truncate_upper.X=1,
                        truncate_lower.Z=0, truncate_upper.Z=1,
                        minZ=-Inf,maxZ=Inf,
-                       verbose=T,fast=T){
+                       verbose=T,fast=T,nMC=5000){
 
   # sample size
 
@@ -111,7 +112,7 @@ napkin_est <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
                        formula.Y = formula.Y, formula.X = formula.X, formula.Z = formula.Z,
                        linkY_binary = linkY_binary, link.X = link.X, link.Z = link.Z,
                        truncate_lower.X = truncate_lower.X, truncate_upper.X = truncate_upper.X,
-                       truncate_lower.Z = truncate_lower.Z, truncate_upper.Z = truncate_upper.Z, minZ=minZ,maxZ=maxZ,verbose=verbose,fast=fast)
+                       truncate_lower.Z = truncate_lower.Z, truncate_upper.Z = truncate_upper.Z, minZ=minZ,maxZ=maxZ,verbose=verbose,fast=fast,nMC=nMC)
 
     out.a0 <- napkin.a(x[2], z =z, data, treatment, Z.variables, W.variables, outcome, covariates,
                        z.density=z.density,z.method = z.method, superlearner.Y = superlearner.Y, superlearner.X = superlearner.X, superlearner.Z = superlearner.Z,
@@ -123,7 +124,7 @@ napkin_est <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
                        formula.Y = formula.Y, formula.X = formula.X, formula.Z = formula.Z,
                        linkY_binary = linkY_binary, link.X = link.X, link.Z = link.Z,
                        truncate_lower.X = truncate_lower.X, truncate_upper.X = truncate_upper.X,
-                       truncate_lower.Z = truncate_lower.Z, truncate_upper.Z = truncate_upper.Z, minZ=minZ,maxZ=maxZ,verbose=verbose,fast=fast)
+                       truncate_lower.Z = truncate_lower.Z, truncate_upper.Z = truncate_upper.Z, minZ=minZ,maxZ=maxZ,verbose=verbose,fast=fast,nMC=nMC)
 
 
     # run TMLE
@@ -229,7 +230,7 @@ napkin_est <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
                       formula.Y = formula.Y, formula.X = formula.X, formula.Z = formula.Z,
                       linkY_binary = linkY_binary, link.X = link.X, link.Z = link.Z,
                       truncate_lower.X = truncate_lower.X, truncate_upper.X = truncate_upper.X,
-                      truncate_lower.Z = truncate_lower.Z, truncate_upper.Z = truncate_upper.Z, minZ=minZ,maxZ=maxZ,verbose=verbose,fast=fast)
+                      truncate_lower.Z = truncate_lower.Z, truncate_upper.Z = truncate_upper.Z, minZ=minZ,maxZ=maxZ,verbose=verbose,fast=fast,nMC=nMC)
 
 
 
