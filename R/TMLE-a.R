@@ -862,7 +862,16 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
     plugin.est <- phi1/phi2 # plug-in estimate
 
     ## create mu.matrx and p.x.matrix for Zsim
-    Zsim <- sampleFromDensity(z.density, nMC, range(Z))
+    if(is.null(z.density)){
+
+      Zsim <- sample(Z, nMC, replace=TRUE) # sample Zsim from the observed data
+
+    }else{
+
+      Zsim <- sampleFromDensity(z.density, nMC, range(Z))
+
+    }
+
 
     mu.matrix.sim <- matrix(NA, n, nMC)
 
@@ -1124,7 +1133,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
       estimated <- mean(EIF.Y+EIF.X+EIF.W) + mean(plugin.est)
 
-      if(verbose){print("Density function of Z is provided. Influence function equals plug-in estimator at all observed Z minus average of the plug-in")}
+      if(verbose){print("Density function of Z is not provided. Influence function equals plug-in estimator at all observed Z minus average of the plug-in")}
 
 
     }
