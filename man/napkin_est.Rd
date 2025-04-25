@@ -39,7 +39,8 @@ napkin_est(
   maxZ = Inf,
   verbose = T,
   fast = T,
-  nMC = 5000
+  nMC = 5000,
+  boundedsubmodelY = F
 )
 }
 \arguments{
@@ -121,6 +122,8 @@ If the absolute of the mean of efficient influence function is less than cvg.cri
 \item{fast}{A logical indicator determines whether the integration involved in the estimation is performed via \code{integrate()} function or via Monte Carlo integration. The former is lower while the later is faster. The default is TRUE.}
 
 \item{nMC}{The number of Monte Carlo samples used for integration when \code{fast} is set to TRUE The default is 5000.}
+
+\item{boundedsubmodelY}{An indicator for whether the bounded submodel is used for targeting the outcome regression when Z is discrete. The default is FALSE.}
 }
 \value{
 Function outputs a list containing TMLE results (and Onestep results if 'onestep=T' is specified). When 'a=c(1,0)', function also outputs corresponding results on \eqn{E(Y^1)} and \eqn{E(Y^0)}:

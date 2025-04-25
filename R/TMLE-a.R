@@ -47,6 +47,7 @@
 #' @param verbose A logical indicator determines whether the function prints out detailed progress of the estimation. The default is TRUE.
 #' @param fast A logical indicator determines whether the integration involved in the estimation is performed via `integrate()` function or via Monte Carlo integration. The former is lower while the later is faster. The default is TRUE.
 #' @param nMC The number of Monte Carlo samples used for integration when `fast` is set to TRUE The default is 5000.
+#' @param boundedsubmodelY An indicator for whether the bounded submodel is used for targeting the outcome regression when Z is discrete. The default is FALSE.
 #' @return Function outputs a list containing TMLE results and Onestep results. Access TMLE result via `$TMLE` and access onestep result via `$onestep`.
 #' \describe{
 #'       \item{\code{estimated}}{The estimated parameter of interest: \eqn{E(Y^x)}}
@@ -86,7 +87,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
                      truncate_lower.X=0, truncate_upper.X=1,
                      truncate_lower.Z=0, truncate_upper.Z=1,
                      minZ=-Inf,maxZ=Inf,
-                     verbose=T,fast=T,nMC=5000){
+                     verbose=T,fast=T,nMC=5000,boundedsubmodelY=F){
 
 
 
@@ -98,6 +99,9 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
   W <- data[,W.variables, drop=F]
   Z <- data[,Z.variables]
   Y <- data[,outcome]
+
+  minY <- min(Y)
+  maxY <- max(Y)
 
 
   # new data sets
@@ -175,6 +179,75 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
 
   } # end of if-else for outcome regression fitting method
+
+
+  if(boundedsubmodelY){
+
+    if (crossfit==T){ #### cross fitting + super learner #####
+
+      fit.family <- if(binaryY){binomial(linkY_binary)}else{gaussian()} # family for super learner depending on whether Y is binary or continuous
+
+      or_fit <- CV.SuperLearner(Y=(Y-min(Y))/(max(Y)-min(Y)), X=dat_mpY, family = fit.family, V = K, SL.library = lib.Y, control = list(saveFitLibrary=T), saveAll = T)
+
+      f.mu.xzw.bounded<- function(x,z,w,c){
+
+        if(is.vector(c)){c <- as.data.frame(t(c))}
+        if(is.vector(w)){w <- as.data.frame(t(w))}
+
+        dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
+
+        mu.Y.xz <- unlist(lapply(1:K, function(x) predict(or_fit$AllSL[[x]], newdata=dat_mpY.xz[or_fit$folds[[x]],])[[1]] %>% as.vector()))[order(unlist(lapply(1:K, function(x) or_fit$folds[[x]])))]
+
+
+        return(mu.Y.xz)
+      } # end of function f.mu.xz
+
+
+    } else if (superlearner.Y==T){ #### super learner #####
+
+      fit.family <- if(binaryY){binomial(linkY_binary)}else{gaussian()} # family for super learner depending on whether Y is binary or continuous
+
+      or_fit <- SuperLearner(Y=(Y-min(Y))/(max(Y)-min(Y)), X=dat_mpY, family = fit.family, SL.library = lib.Y)
+
+      f.mu.xzw.bounded<- function(x,z,w,c){
+
+        if(is.vector(c)){c <- as.data.frame(t(c))}
+        if(is.vector(w)){w <- as.data.frame(t(w))}
+
+        dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
+
+        mu.Y.xz <- predict(or_fit, newdata=dat_mpY.xz)[[1]] %>% as.vector()
+
+        return(mu.Y.xz)
+      } # end of function f.mu.xz
+
+
+    } else { #### simple linear regression with user input regression formula: default="Y ~ ." ####
+
+      fit.family <- if(binaryY){binomial(linkY_binary)}else{gaussian()} # family for super learner depending on whether Y is binary or continuous
+
+      dat_mpY.bounded <- dat_mpY %>% mutate(Y = (Y-min(Y))/(max(Y)-min(Y)))
+
+      or_fit <- glm(as.formula(formula.Y), data=dat_mpY.bounded, family = fit.family)
+
+      f.mu.xzw.bounded <- function(x,z,w,c){
+
+        if(is.vector(c)){c <- as.data.frame(t(c))}
+        if(is.vector(w)){w <- as.data.frame(t(w))}
+
+        dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
+
+        mu.Y.xz <- predict(or_fit, newdata=dat_mpY.xz, type="response")
+
+
+        return(mu.Y.xz)
+      }
+
+
+
+    } # end of if-else for outcome regression fitting method
+
+  }
 
   print("outcome regression done.")
 
@@ -560,7 +633,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
       EIF <- EIF.Y + EIF.X + EIF.W + plugin.est - mean(plugin.est)
 
-      if(verbose){cat("Density function of Z is not provided. Influence function and plug-in estimator computed via density estimation.\n Density function of Z is provided.\n Influence function equals plug-in estimator at all observed Z minus average of the plug-in")}
+      if(verbose){cat("Density function of Z is not provided. Influence function and plug-in estimator computed via density estimation.")}
 
     }
 
@@ -707,18 +780,6 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
       p.z <- f.z(z, truncate_lower.Z, truncate_upper.Z) # z-density
       mu.xz <- f.mu.xzw(x, z,W,C) # outcome regression
 
-      # # initialize EDstar, the mean of EIF
-      # EDstar <- 10 # random large number
-
-      # record EDstar over iterations
-      # EDstar.record <- data.frame(EDstar.Y=numeric(), EDstar.X=numeric(), EDstar.W=numeric(), EDstar=numeric())
-
-      # # initialize iteration counter
-      # iter <- 0
-
-
-      # while(abs(EDstar) > cvg.criteria & iter < n.iter){
-
       #############################
       # update mu: E(Y|X=x,Z=z,W,C)
       #############################
@@ -726,7 +787,24 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
       # weight.Y <- {(X==x)*(Z==z)}/{mean(p.x.z)*p.z} # weight for Y
       weight.Y <- {(X==x)*(Z==z)}/{p.z} # weight for Y
 
-      if (binaryY){ # binary Y
+      if (binaryY|boundedsubmodelY){ # binary Y
+
+        if(boundedsubmodelY){
+
+          if(verbose){
+            cat("boundedsubmodelY is TRUE, rescaling Y to [0,1] \n")
+          }
+
+          minY <- min(Y)
+          maxY <- max(Y)
+
+          Y <- (Y-minY)/(maxY-minY) # rescale Y to [0,1]
+          mu.xz <- f.mu.xzw.bounded(x, z,W,C) # outcome regression
+
+          mu.xz[mu.xz<0] <- 0.001
+          mu.xz[mu.xz>1] <- 0.999
+
+        }
 
         # one iteration
         or_model <- glm(
@@ -737,6 +815,14 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
         # updated outcome regression
         mu.xz = plogis(qlogis(mu.xz)+eps.Y*p.z)
+
+        # if(boundedsubmodelY){
+        #
+        #   Y <- Y*(maxY-minY)+minY # rescale Y back
+        #
+        #   mu.xz <- mu.xz*(max.mu-min.mu)+min.mu # rescale mu back
+        #
+        # }
 
       } else { # continuous Y
 
@@ -1161,6 +1247,13 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
       out.z1=f.tmle.xz_binaryZ(x,z=1, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z)
       out.z0=f.tmle.xz_binaryZ(x,z=0, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z)
+
+      if(boundedsubmodelY){
+
+        out.z1$estimated <- out.z1$estimated*(maxY-minY)+minY
+        out.z0$estimated <- out.z0$estimated*(maxY-minY)+minY
+
+      }
 
       ## using all levels of Z
 
