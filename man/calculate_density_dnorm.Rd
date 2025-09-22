@@ -7,7 +7,6 @@
 calculate_density_dnorm(
   Z.variables,
   W.variables,
-  covariates,
   data,
   formula.Z = "Z~.",
   superlearner.Z = F,
@@ -21,11 +20,9 @@ calculate_density_dnorm(
 
 \item{W.variables}{A character vector indicating the parents of Z.variables.}
 
-\item{covariates}{A character vector indicating the pre-treatment covariates in the napkin graph.}
-
 \item{data}{A Dataframe contains all the variables listed in vertices parameter}
 
-\item{formula.Z}{A regression formula specifying the relationship between Z,W, and covariates. For example formula = "Z ~ W + C".}
+\item{formula.Z}{A regression formula specifying the relationship between Z,W, and covariates. For example formula = "Z ~ W".}
 
 \item{superlearner.Z}{A logical value indicating whether to use super learner to estimate the propensity score. Default is FALSE.}
 
@@ -39,11 +36,11 @@ calculate_density_dnorm(
 A vector of density for each row of the data.
 }
 \description{
-This function calculates the density associated with Z: p(Z|W,C).
+This function calculates the density associated with Z: p(Z|W).
 }
 \examples{
-z.density <- calculate_density_dnorm(Z.variables = "Z", W.variables = "W", covariates = "C",
-data = data_Zcontinuous_Ycontinuous, formula = "Z ~ W + C")
+z.density <- calculate_density_dnorm(Z.variables = "Z", W.variables = "W",
+data = data_Zcontinuous_Ycontinuous, formula = "Z ~ W")
 head(z.density)
 
 }

@@ -13,25 +13,24 @@
 #' If Z is continuous, it will return the combined estimate over all levels of Z.
 #' @param W.variables A character vector indicating the parents of Z.variables.
 #' @param outcome A character string indicating the outcome variable
-#' @param covariates A character vector indicating the pre-treatment covariates in the napkin graph.
 #' @param z.density A argument that takes the user specified function for estimating the density of Z.
-#' @param z.method A character string indicating the method used to estimate the conditional density of p(Z|W,C). There are two options: 'dnorm' and 'np'. The default is 'dnorm'.
+#' @param z.method A character string indicating the method used to estimate the conditional density of p(Z|W). There are two options: 'dnorm' and 'np'. The default is 'dnorm'.
 #' If Z is binary, regression based method will be adopted. The formula of the regression can be specified by `formula.Z`.
-#' If Z is continuous, the `z.method` method will be adopted. The `dnorm` method assumes that the conditional density of Z given W and C is normal.
-#' The `np` method estimates the conditional density of Z given W and C via non-parametric method via the \link[np]{np} package.
+#' If Z is continuous, the `z.method` method will be adopted. The `dnorm` method assumes that the conditional density of Z given W is normal.
+#' The `np` method estimates the conditional density of Z given W via non-parametric method via the \link[np]{np} package.
 #' @details In assuming normal distribution. The `dnorm` method estimates the mean of the normal distribution by fitting a linear regression model with only linear terms and no interaction terms and the variance of the normal distribution sample variance of the error term resulted from the linear regression model.
 #' In assuming logistic regression, the `dnorm` method further assume the logistic regression contains only linear terms and no interaction terms.
 #' @param superlearner.Y A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the outcome regression.
 #' @param superlearner.X A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the propensity score.
-#' @param superlearner.Z A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the conditional density p(Z|W,C) when Z is binary.
+#' @param superlearner.Z A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the conditional density p(Z|W) when Z is binary.
 #' @param crossfit A logical indicator determines whether crossfitting is adopted for SuperLearner. If crossfit is set to TRUE, the data is split into K folds as specified by the `K` parameter.
 #' @param K An integer specifying the number of folds for crossfitting.
 #' @param lib.Y A character vector specifying the library of algorithms to be used in the SuperLearner for outcome regression.
 #' @param lib.X A character vector specifying the library of algorithms to be used in the SuperLearner for propensity score estimation.
-#' @param lib.Z A character vector specifying the library of algorithms to be used in the SuperLearner for estimating the conditional density of Z given W and C.
+#' @param lib.Z A character vector specifying the library of algorithms to be used in the SuperLearner for estimating the conditional density of Z given W.
 #' @param formula.Y Regression formula for the outcome regression of Y on it's Markov pillow. The default is 'Y ~ .'.
 #' @param formula.X Regression formula for the propensity score regression of A on it's Markov pillow. The default is 'X ~ .'.
-#' @param formula.Z Regression formula for the conditional density of Z given W and C. The default is 'Z ~ .'.
+#' @param formula.Z Regression formula for the conditional density of Z given W. The default is 'Z ~ .'.
 #' @param linkY_binary The link function used for outcome regression of Y on it's Markov pillow when Y is binary and superlearner is not sued. The default is the 'logit' link.
 #' @param link.X The link function used for propensity score regression of X on it's Markov pillow if superlearner is not used. The default is the 'logit' link.
 #' @param link.Z The link function used for the regression of Z on it's Markov pillow if superlearner is not used. The default is the 'logit' link.
@@ -40,8 +39,8 @@
 #' @param n.iter The maximum number of iterations for the iterative update of the nuisances in TMLE. The default value is 500.
 #' @param truncate_lower.X The lower bound for truncation of the propensity score. The default is 0, which means no truncation.
 #' @param truncate_upper.X The upper bound for truncation of the propensity score. The default is 1, which means no truncation.
-#' @param truncate_lower.Z The lower bound for truncation of the conditional density of Z given W and C. The default is 0, which means no truncation.
-#' @param truncate_upper.Z The upper bound for truncation of the conditional density of Z given W and C. The default is 1, which means no truncation.
+#' @param truncate_lower.Z The lower bound for truncation of the conditional density of Z given W. The default is 0, which means no truncation.
+#' @param truncate_upper.Z The upper bound for truncation of the conditional density of Z given W. The default is 1, which means no truncation.
 #' @param minZ The lower bound used for performing integration of Z when Z is continuous. The default is -Inf.
 #' @param maxZ The upper bound used for performing integration of Z when Z is continuous. The default is Inf.
 #' @param verbose A logical indicator determines whether the function prints out detailed progress of the estimation. The default is TRUE.
@@ -61,8 +60,8 @@
 #' @examples
 #' # E(Y(1)) estimation.
 #' res <- napkin.a(x=1, z = NULL, data=data_Zbinary_Ycontinuous,
-#' treatment="X", Z.variables="Z", W.variables="W", outcome="Y", covariates="C",
-#' formula.Y="Y ~ C + X*Z*W", formula.X="X ~ Z*W", formula.Z="Z~.",
+#' treatment="X", Z.variables="Z", W.variables="W", outcome="Y",
+#' formula.Y="Y ~ X*Z*W", formula.X="X ~ Z*W", formula.Z="Z~.",
 #' link.X="identity", link.Z="logit")
 #' @importFrom dplyr %>% mutate select
 #' @importFrom MASS mvrnorm
@@ -75,7 +74,7 @@
 #' @importFrom RVCompare sampleFromDensity
 #' @export
 
-napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome, covariates,
+napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome,
                      z.density=NULL, z.method="dnorm", superlearner.Y=F, superlearner.X=F,superlearner.Z=F,
                      crossfit=F,K=5,
                      lib.Y = c("SL.glm","SL.earth","SL.ranger","SL.mean"),
@@ -94,7 +93,6 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
   n <- nrow(data)
 
   # Variables
-  C <- data[,covariates, drop = F]
   X <- data[,treatment]
   W <- data[,W.variables, drop=F]
   Z <- data[,Z.variables]
@@ -103,15 +101,21 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
   minY <- min(Y)
   maxY <- max(Y)
 
+  #formulas
+  formula.Z <- as.formula(formula.Z)
+  formula.X <- as.formula(formula.X)
+  formula.Y <- as.formula(formula.Y)
 
   # new data sets
-  dat_mpY = data.frame(X,Z,W, C)
-  dat_mpX = data.frame(Z,W, C)
-  dat_mpZ = data.frame(W, C)
-  dat_ZmpZ = data.frame(Z,W, C)
+  dat_mpY = data.frame(X,Z,W)
+  dat_mpX = data.frame(Z,W)
+  dat_mpZ = data.frame(W)
+  dat_ZmpZ = data.frame(Z,W)
 
   binaryY <- all(Y %in% c(0,1))
   binaryZ <- all(as.vector(Z) %in% c(0,1))
+
+  z.density.provided <- is.null(z.density)
 
   ################################################
   ############### OUTCOME REGRESSION #############
@@ -124,12 +128,11 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     or_fit <- CV.SuperLearner(Y=Y, X=dat_mpY, family = fit.family, V = K, SL.library = lib.Y, control = list(saveFitLibrary=T), saveAll = T)
 
-    f.mu.xzw<- function(x,z,w,c){
+    f.mu.xzw<- function(x,z,w){
 
-      if(is.vector(c)){c <- as.data.frame(t(c))}
       if(is.vector(w)){w <- as.data.frame(t(w))}
 
-      dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
+      dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables))
 
       mu.Y.xz <- unlist(lapply(1:K, function(x) predict(or_fit$AllSL[[x]], newdata=dat_mpY.xz[or_fit$folds[[x]],])[[1]] %>% as.vector()))[order(unlist(lapply(1:K, function(x) or_fit$folds[[x]])))]
 
@@ -144,12 +147,11 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     or_fit <- SuperLearner(Y=Y, X=dat_mpY, family = fit.family, SL.library = lib.Y)
 
-    f.mu.xzw<- function(x,z,w,c){
+    f.mu.xzw<- function(x,z,w){
 
-      if(is.vector(c)){c <- as.data.frame(t(c))}
       if(is.vector(w)){w <- as.data.frame(t(w))}
 
-      dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
+      dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables))
 
       mu.Y.xz <- predict(or_fit, newdata=dat_mpY.xz)[[1]] %>% as.vector()
 
@@ -161,14 +163,13 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     fit.family <- if(binaryY){binomial(linkY_binary)}else{gaussian()} # family for super learner depending on whether Y is binary or continuous
 
-    or_fit <- glm(as.formula(formula.Y), data=dat_mpY, family = fit.family)
+    or_fit <- glm(formula.Y, data=dat_mpY, family = fit.family)
 
-    f.mu.xzw <- function(x,z,w,c){
+    f.mu.xzw <- function(x,z,w){
 
-      if(is.vector(c)){c <- as.data.frame(t(c))}
       if(is.vector(w)){w <- as.data.frame(t(w))}
 
-      dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
+      dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables))
 
       mu.Y.xz <- predict(or_fit, newdata=dat_mpY.xz, type="response")
 
@@ -189,12 +190,12 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
       or_fit <- CV.SuperLearner(Y=(Y-min(Y))/(max(Y)-min(Y)), X=dat_mpY, family = fit.family, V = K, SL.library = lib.Y, control = list(saveFitLibrary=T), saveAll = T)
 
-      f.mu.xzw.bounded<- function(x,z,w,c){
+      f.mu.xzw.bounded<- function(x,z,w){
 
-        if(is.vector(c)){c <- as.data.frame(t(c))}
+
         if(is.vector(w)){w <- as.data.frame(t(w))}
 
-        dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
+        dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables))
 
         mu.Y.xz <- unlist(lapply(1:K, function(x) predict(or_fit$AllSL[[x]], newdata=dat_mpY.xz[or_fit$folds[[x]],])[[1]] %>% as.vector()))[order(unlist(lapply(1:K, function(x) or_fit$folds[[x]])))]
 
@@ -209,12 +210,12 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
       or_fit <- SuperLearner(Y=(Y-min(Y))/(max(Y)-min(Y)), X=dat_mpY, family = fit.family, SL.library = lib.Y)
 
-      f.mu.xzw.bounded<- function(x,z,w,c){
+      f.mu.xzw.bounded<- function(x,z,w){
 
-        if(is.vector(c)){c <- as.data.frame(t(c))}
+
         if(is.vector(w)){w <- as.data.frame(t(w))}
 
-        dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
+        dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables))
 
         mu.Y.xz <- predict(or_fit, newdata=dat_mpY.xz)[[1]] %>% as.vector()
 
@@ -228,14 +229,13 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
       dat_mpY.bounded <- dat_mpY %>% mutate(Y = (Y-min(Y))/(max(Y)-min(Y)))
 
-      or_fit <- glm(as.formula(formula.Y), data=dat_mpY.bounded, family = fit.family)
+      or_fit <- glm(formula.Y, data=dat_mpY.bounded, family = fit.family)
 
-      f.mu.xzw.bounded <- function(x,z,w,c){
+      f.mu.xzw.bounded <- function(x,z,w){
 
-        if(is.vector(c)){c <- as.data.frame(t(c))}
         if(is.vector(w)){w <- as.data.frame(t(w))}
 
-        dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
+        dat_mpY.xz <- data.frame(Z = z, X = x, setNames(as.data.frame(w), W.variables))
 
         mu.Y.xz <- predict(or_fit, newdata=dat_mpY.xz, type="response")
 
@@ -249,7 +249,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
   }
 
-  print("outcome regression done.")
+  cat("outcome regression done.")
 
   ################################################
   ############### PROPENSITY SCORE ###############
@@ -260,12 +260,12 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     ps_fit <- CV.SuperLearner(Y=X, X=dat_mpX, family = binomial(), V = K, SL.library = lib.X, control = list(saveFitLibrary=T),saveAll = T)
 
-    f.x.zw <- function(x, z, w,c, truncate_lower, truncate_upper){
+    f.x.zw <- function(x, z, w, truncate_lower, truncate_upper){
 
-      if(is.vector(c)){c <- as.data.frame(t(c))}
+
       if(is.vector(w)){w <- as.data.frame(t(w))}
 
-      dat_mpX.z <- data.frame(Z=z, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
+      dat_mpX.z <- data.frame(Z=z, setNames(as.data.frame(w), W.variables))
 
       p.x1.z <- unlist(lapply(1:K, function(x) predict(ps_fit$AllSL[[x]], newdata=dat_mpX.z[ps_fit$folds[[x]],])[[1]] %>% as.vector()))[order(unlist(lapply(1:K, function(x) ps_fit$folds[[x]])))]
 
@@ -284,13 +284,13 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     ps_fit <- SuperLearner(Y=X, X=dat_mpX, family = binomial(), SL.library = lib.X)
 
-    # p(X=1|Z=z,w,C)
-    f.x.zw <- function(x, z, w, c, truncate_lower, truncate_upper){
+    # p(X=1|Z=z,w)
+    f.x.zw <- function(x, z, w, truncate_lower, truncate_upper){
 
-      if(is.vector(c)){c <- as.data.frame(t(c))}
+
       if(is.vector(w)){w <- as.data.frame(t(w))}
 
-      dat_mpX.z <- data.frame(Z=z, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
+      dat_mpX.z <- data.frame(Z=z, setNames(as.data.frame(w), W.variables))
 
       p.x1.z <- predict(ps_fit, newdata=dat_mpX.z, type="response")[[1]] %>% as.vector()
 
@@ -308,15 +308,15 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
   } else { #### simple linear regression with user input regression formula: default="A ~ ." ####
 
-    ps_fit <- glm(as.formula(formula.X), data=dat_mpX,  family = binomial(link.X))
+    ps_fit <- glm(formula.X, data=dat_mpX,  family = binomial(link.X))
 
 
-    f.x.zw <- function(x, z,w, c, truncate_lower, truncate_upper){
+    f.x.zw <- function(x, z,w, truncate_lower, truncate_upper){
 
-      if(is.vector(c)){c <- as.data.frame(t(c))}
+
       if(is.vector(w)){w <- as.data.frame(t(w))}
 
-      dat_mpX.z <- data.frame(Z=z, setNames(as.data.frame(w), W.variables), setNames(as.data.frame(c), covariates))
+      dat_mpX.z <- data.frame(Z=z, setNames(as.data.frame(w), W.variables))
       p.x1.z <- predict(ps_fit, newdata=dat_mpX.z, type="response")
 
       # truncation
@@ -332,11 +332,11 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
   } # end of if-else for propensity score fitting
 
 
-  print("propensity score regression done.")
+  cat("propensity score regression done.")
 
 
   ################################################################
-  ############### f_Z(Z|W,C) Conditional density ###############
+  ############### f_Z(Z|W) Conditional density ###############
   ################################################################
 
 
@@ -366,7 +366,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
       z_fit <- SuperLearner(Y=Z, X=dat_mpZ, family = binomial(), SL.library = lib.Z)
 
-      # p(X=1|Z=z,W,C)
+      # p(X=1|Z=z,W)
       f.z <- function(z, truncate_lower=0, truncate_upper=1){
 
         p.z1 <- predict(z_fit, type = "response")[[1]] %>% as.vector()
@@ -385,7 +385,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     } else { #### simple linear regression with user input regression formula: default="A ~ ." ####
 
-      z_fit <- glm(as.formula(formula.Z), data=dat_mpZ,  family = binomial(link.Z))
+      z_fit <- glm(formula.Z, data=dat_mpZ,  family = binomial(link.Z))
 
       f.z <- function(z, truncate_lower=0, truncate_upper=1){
 
@@ -401,7 +401,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
       } # end of function f.pi.z
 
-    } # end of if-else for Z|W,C regression fitting
+    } # end of if-else for Z|W regression fitting
 
 
 
@@ -412,26 +412,31 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     if (is.function(z.method)){
 
-      # make prediction for p(Z_i|W_i,C_i)
-      p.z <- sapply(1:n, function(i) z.method(Z.variables = Z[i], W.variables = as.vector(W[i,]), covariates = as.vector(C[i,])) )
+      # make prediction for p(Z_i|W_i)
+      p.z <- sapply(1:n, function(i) z.method(Z.variables = Z[i], W.variables = as.vector(W[i,])) )
 
     }else if (z.method=="np"){
 
-      ## M|A,X
+      ## Z|W
       # Methods on density estimation:
       # np: https://cran.r-project.org/web/packages/np/np.pdf
 
-      bw <- npcdensbw(formula=as.formula(formula.Z), data=dat_ZmpZ)
+      environment(formula.Z) <- environment()
+
+      bw <- eval(substitute(npcdensbw(formula = FORM, data = DATA),
+                            list(FORM = formula.Z, DATA = dat_ZmpZ)))
+
+      # bw <- npcdensbw(formula=formula.Z, data=dat_ZmpZ)
       Z_fit <- npcdens(bws=bw)
 
-      # make prediction for p(Z_i|W_i,C_i)
+      # make prediction for p(Z_i|W_i)
       p.z <- predict(Z_fit)
 
     }else if (z.method=="dnorm"){
 
-      dnorm.density <- calculate_density_dnorm(Z.variables=Z.variables, W.variables=W.variables, covariates=covariates, data=data, formula.Z=formula.Z, superlearner.Z=superlearner.Z, crossfit=crossfit, K=K)
+      dnorm.density <- calculate_density_dnorm(Z.variables=Z.variables, W.variables=W.variables, data=data, formula.Z=formula.Z, superlearner.Z=superlearner.Z, crossfit=crossfit, K=K)
 
-      # make prediction for p(Z_i|W_i,C_i)
+      # make prediction for p(Z_i|W_i)
       p.z <- dnorm.density[[1]]
 
     }else{
@@ -446,7 +451,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
   } # end of if-else for binary Z
 
 
-  print("Estimation for conditional density of Z completed.")
+  cat("Estimation for conditional density of Z completed.")
 
 
 
@@ -454,7 +459,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
   ############### p(Z) density ###############
   #############################################
 
-  if (is.null(z.density)){
+  if (z.density.provided){
 
     den.zi <- density(Z)
 
@@ -467,7 +472,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
   }
 
 
-  print("Estimation/Evaluation for p(Z) completed.")
+  cat("Estimation/Evaluation for p(Z) completed.")
 
   ##################################################################
   #################### One-step estimator ##########################
@@ -480,8 +485,8 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     # nuisance parameters
     p.z <- f.z(z, truncate_lower.Z, truncate_upper.Z) # z-density
-    p.x.z <- f.x.zw(x, z,W,C, truncate_lower.X, truncate_upper.X) # propensity score
-    mu.xz <- f.mu.xzw(x, z,W,C) # outcome regression
+    p.x.z <- f.x.zw(x, z,W, truncate_lower.X, truncate_upper.X) # propensity score
+    mu.xz <- f.mu.xzw(x, z,W) # outcome regression
 
     phi1 <- mean(mu.xz*p.x.z) # numerator of the plugin estimator
     phi2 <- mean(p.x.z) # denominator of the plugin estimator
@@ -495,9 +500,9 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
     plugin.est <- phi1/phi2 # plug-in estimate
 
     # EIF
-    EIF.Y <- {(X==x)*(Z==z)}/{phi2*p.z}*(Y-mu.xz) # EIF for Y
-    EIF.X <- (Z==z)/{phi2*p.z}*(mu.xz-plugin.est)*( (X==x) - p.x.z ) # EIF for X
-    EIF.W <- 1/phi2*{mu.xz*p.x.z - plugin.est*p.x.z}
+    EIF.Y <- {(X==x)*(Z==z)}/{mean(kappa2_plus_phi2)*p.z}*(Y-mu.xz) # EIF for Y
+    EIF.X <- (Z==z)/{mean(kappa2_plus_phi2)*p.z}*(mu.xz-plugin.est)*( (X==x) - p.x.z ) # EIF for X
+    EIF.W <- 1/mean(kappa2_plus_phi2)*{mu.xz*p.x.z - plugin.est*p.x.z}
 
     EIF <- EIF.Y + EIF.X + EIF.W
 
@@ -517,11 +522,11 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
   f.onestep.x_nonbinaryZ <- function(x, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z, p.z){ # one-step estimate and its EIF
 
     # nuisance parameters
-    p.x.z <- f.x.zw(x, Z,W,C, truncate_lower.X, truncate_upper.X) # propensity score
-    mu.xz <- f.mu.xzw(x, Z,W,C) # outcome regression
+    p.x.z <- f.x.zw(x, Z,W, truncate_lower.X, truncate_upper.X) # propensity score
+    mu.xz <- f.mu.xzw(x, Z,W) # outcome regression
 
-    phi1 <- sapply(1:n, function(i) mean(f.x.zw(x, Z[i],W,C, truncate_lower.X, truncate_upper.X)*f.mu.xzw(x, Z[i],W,C) )) # numerator of the plugin estimator
-    phi2 <- sapply(1:n, function(i) mean(f.x.zw(x, Z[i],W,C, truncate_lower.X, truncate_upper.X) )) # denominator of the plugin estimator
+    phi1 <- sapply(1:n, function(i) mean(f.x.zw(x, Z[i],W, truncate_lower.X, truncate_upper.X)*f.mu.xzw(x, Z[i],W) )) # numerator of the plugin estimator
+    phi2 <- sapply(1:n, function(i) mean(f.x.zw(x, Z[i],W, truncate_lower.X, truncate_upper.X) )) # denominator of the plugin estimator
 
     plugin.est <- phi1/phi2 # plug-in estimate
 
@@ -532,14 +537,14 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
     # functions for computing EIF.W and plugin psi(Z_j) ----------------- #
 
     # integrand for calculating the EIF for W
-    integrand.EIF.W <- function(z,w,c){
+    integrand.EIF.W <- function(z,w){
 
-      phi1.z <- sapply(z, function(zi) mean(f.x.zw(x, zi,W,C, truncate_lower.X, truncate_upper.X)*f.mu.xzw(x, zi,W,C) ))
-      phi2.z <- sapply(z, function(zi) mean(f.x.zw(x, zi,W,C, truncate_lower.X, truncate_upper.X)))
+      phi1.z <- sapply(z, function(zi) mean(f.x.zw(x, zi,W, truncate_lower.X, truncate_upper.X)*f.mu.xzw(x, zi,W) ))
+      phi2.z <- sapply(z, function(zi) mean(f.x.zw(x, zi,W, truncate_lower.X, truncate_upper.X)))
 
       plugin.est.z <- phi1.z/phi2.z
 
-      int.w <- z.density(z)*(f.x.zw(x, z, w,c, truncate_lower.X, truncate_upper.X)/phi2.z*(f.mu.xzw(x, z,w,c) - plugin.est.z) )
+      int.w <- z.density(z)*(f.x.zw(x, z, w, truncate_lower.X, truncate_upper.X)/phi2.z*(f.mu.xzw(x, z,w,c) - plugin.est.z) )
 
       return(int.w)
 
@@ -548,28 +553,16 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
     # used to calculate the EIF for W and plugin estimator FASTLY
     fast.EIF.W <- function(Zsim){
 
-      # W_stacked <- W[rep(seq_len(n), times = nMC), ]
-      # C_stacked <- C[rep(seq_len(n), times = nMC), ]
-      #
-      # pi.Zsim <- f.x.zw(x, rep(Zsim,each=n),W_stacked,C_stacked, truncate_lower.X, truncate_upper.X)
-      # mu.Zsim <- f.mu.xzw(x, rep(Zsim,each=n),W_stacked,C_stacked)
-      #
-      # phi1.Zsim.long <- pi.Zsim*mu.Zsim
-      # phi1.Zsim <- rowMeans(matrix(phi1.Zsim.long, nrow=n, byrow = T))
-      #
-      # phi2.Zsim.long <- pi.Zsim
-      # phi2.Zsim <- rowMeans(matrix(phi2.Zsim.long, nrow=n, byrow = T))
-
       mu.matrix.sim <- matrix(NA, n, nMC)
 
-      for (i in 1:nMC) { # the columns are the predictions for p(Y_i|X=x,Z_j,W_i,C_i) for i from 1 to n, Z_j in Zsim
-        mu.matrix.sim[, i] <- f.mu.xzw(x, Zsim[i],W,C)
+      for (i in 1:nMC) { # the columns are the predictions for p(Y_i|X=x,Z_j,W_i) for i from 1 to n, Z_j in Zsim
+        mu.matrix.sim[, i] <- f.mu.xzw(x, Zsim[i],W)
       }
 
       p.x.matrix.sim <- matrix(NA, n, nMC)
 
-      for (i in 1:nMC) { # the columns are the predictions for p(X=x|Z_j,W_i,C_i) for i from 1 to n, Z_j in Zsim
-        p.x.matrix.sim[, i] <- f.x.zw(x, Zsim[i],W,C, truncate_lower.X, truncate_upper.X)
+      for (i in 1:nMC) { # the columns are the predictions for p(X=x|Z_j,W_i) for i from 1 to n, Z_j in Zsim
+        p.x.matrix.sim[, i] <- f.x.zw(x, Zsim[i],W, truncate_lower.X, truncate_upper.X)
       }
 
       phi1.sim <- colMeans(mu.matrix.sim*p.x.matrix.sim) # numerator of the plugin estimator
@@ -588,8 +581,8 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
     # integrand for calculating the plugin estimator
     integrand.plugin <- function(z){
 
-      phi1.z <- sapply(z, function(zi) mean(f.x.zw(x, zi,W,C, truncate_lower.X, truncate_upper.X)*f.mu.xzw(x, zi,W,C) ))
-      phi2.z <- sapply(z, function(zi) mean(f.x.zw(x, zi,W,C, truncate_lower.X, truncate_upper.X)))
+      phi1.z <- sapply(z, function(zi) mean(f.x.zw(x, zi,W, truncate_lower.X, truncate_upper.X)*f.mu.xzw(x, zi,W) ))
+      phi2.z <- sapply(z, function(zi) mean(f.x.zw(x, zi,W, truncate_lower.X, truncate_upper.X)))
 
       plugin.est.z <- phi1.z/phi2.z
 
@@ -599,7 +592,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     }
 
-    if (!is.null(z.density)){ # if the z.density function is given
+    if (!z.density.provided){ # if the z.density function is given
 
       if (fast){
 
@@ -617,7 +610,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
         if(verbose){cat("Integration computed with integrate() function. This step may take a while.\n If you want to speed up the process, set fast=TRUE.")}
 
-        EIF.W <- unlist(lapply(1:n, function(i) integrate(integrand.EIF.W, lower = minZ, upper = maxZ, w=W[i,],c=C[i,])$value))
+        EIF.W <- unlist(lapply(1:n, function(i) integrate(integrand.EIF.W, lower = minZ, upper = maxZ, w=W[i,])$value))
 
         plugin.est <- integrate(integrand.plugin, lower = minZ, upper = maxZ)$value
 
@@ -625,11 +618,11 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
       EIF <- EIF.Y + EIF.X + EIF.W
 
-      if(verbose){cat("Density function of Z is provided. \n Influence function and plug-in estimator computed using the given density function of Z. \n Influence function equals 0 at the tangent space of Z")}
+      if(verbose){cat("Density function of Z is provided. \n Influence function and plug-in estimator computed using the given density function of Z.")}
 
     }else{ # if the z.density function is NOT given
 
-      EIF.W <- Reduce(`+`, lapply(1:n, function(i) f.x.zw(x, Z[i],W,C, truncate_lower.X, truncate_upper.X)/phi2[i]*(f.mu.xzw(x, Z[i],W,C) - plugin.est[i])    ))/n
+      EIF.W <- Reduce(`+`, lapply(1:n, function(i) f.x.zw(x, Z[i],W, truncate_lower.X, truncate_upper.X)/phi2[i]*(f.mu.xzw(x, Z[i],W) - plugin.est[i])    ))/n
 
       EIF <- EIF.Y + EIF.X + EIF.W + plugin.est - mean(plugin.est)
 
@@ -682,7 +675,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
   }else{
 
-    if(verbose){print(paste0('Z is continuous. Computing one-step estimator at the ',ifelse(!is.null(z.density),'given','estimated'),' density function of Z.'))}
+    if(verbose){cat(paste0('Z is continuous. Computing one-step estimator at the ',ifelse(!z.density.provided,'given','estimated'),' density function of Z.'))}
 
     out.all.z <- f.onestep.x_nonbinaryZ(x, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z, p.z)
 
@@ -701,8 +694,10 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
       # nuisance parameters
       p.z <- f.z(z, truncate_lower.Z, truncate_upper.Z) # z-density
-      p.x.z <- f.x.zw(x, z,W,C,truncate_lower.X, truncate_upper.X) # propensity score
-      mu.xz <- f.mu.xzw(x, z,W,C) # outcome regression
+      p.x.z <- f.x.zw(x, z,W,truncate_lower.X, truncate_upper.X) # propensity score
+      mu.xz <- f.mu.xzw(x, z,W) # outcome regression
+
+      plugin.est <- mean(mu.xz*p.x.z) # plug-in estimate
 
       # uncetered EIF of phi1
       kappa1_plus_phi1 <- {(Z==z)/p.z}*{(X==x)*Y - mu.xz*p.x.z} + mu.xz*p.x.z
@@ -710,16 +705,13 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
       # uncentered EIF of phi2
       kappa2_plus_phi2 <- {(Z==z)/p.z}*( (X==x) - p.x.z ) + p.x.z
 
-      phi1 <- mean(kappa1_plus_phi1) # numerator of the plugin estimator
-      phi2 <- mean(kappa2_plus_phi2) # denominator of the plugin estimator
-
       # point estimate
       estimated <- mean(kappa1_plus_phi1)/mean(kappa2_plus_phi2)
 
       # EIF
-      EIF.Y <- {(X==x)*(Z==z)}/{phi2*p.z}*(Y-mu.xz) # EIF for Y
-      EIF.X <- (Z==z)/{phi2*p.z}*(mu.xz-estimated)*( (X==x) - p.x.z ) # EIF for X
-      EIF.W <- 1/phi2*{mu.xz*p.x.z - estimated*p.x.z}
+      EIF.Y <- {(X==x)*(Z==z)}/{mean(kappa2_plus_phi2)*p.z}*(Y-mu.xz) # EIF for Y
+      EIF.X <- (Z==z)/{mean(kappa2_plus_phi2)*p.z}*(mu.xz-plugin.est)*( (X==x) - p.x.z ) # EIF for X
+      EIF.W <- 1/mean(kappa2_plus_phi2)*{mu.xz*p.x.z - plugin.est*p.x.z}
 
       EIF <- EIF.Y + EIF.X + EIF.W
 
@@ -731,6 +723,135 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
 
     }
+
+
+  f.equation.xz_nonbinaryZ <- function(x, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z, p.z){ # one-step estimate and its EIF
+
+    # integrand for calculating the plugin estimator
+    integrand.plugin <- function(z){
+
+      phi1.z <- sapply(z, function(zi) mean(f.x.zw(x, zi,W, truncate_lower.X, truncate_upper.X)*f.mu.xzw(x, zi,W) ))
+      phi2.z <- sapply(z, function(zi) mean(f.x.zw(x, zi,W, truncate_lower.X, truncate_upper.X)))
+
+      plugin.est.z <- phi1.z/phi2.z
+
+      int.w1 <- z.density(z)*plugin.est.z
+
+      return(int.w1)
+
+    }
+
+    integrated.plugin.est <- integrate(integrand.plugin, lower = minZ, upper = maxZ)$value # integrated plugin estimate
+
+
+    # nuisance parameters
+    p.x.z <- f.x.zw(x, Z,W, truncate_lower.X, truncate_upper.X) # propensity score
+    mu.xz <- f.mu.xzw(x, Z,W) # outcome regression
+
+    phi1 <- sapply(1:n, function(i) mean(f.x.zw(x, Z[i],W, truncate_lower.X, truncate_upper.X)*f.mu.xzw(x, Z[i],W) )) # numerator of the plugin estimator
+    phi2 <- sapply(1:n, function(i) mean(f.x.zw(x, Z[i],W, truncate_lower.X, truncate_upper.X) )) # denominator of the plugin estimator
+
+    plugin.est <- phi1/phi2
+
+    # estimating equation estimator
+    phi1.aipw <- mean(p.zi/{phi2*p.z}*( (X==x)*Y - mu.xz*p.x.z )) + integrated.plugin.est
+    phi2.aipw <- mean(p.zi/{phi2*p.z}*( (X==x) - p.x.z )) + 1
+
+    estimated <- phi1.aipw/phi2.aipw
+
+
+    ## calculate EIF for inference
+    # EIF
+    EIF.Y <- {(X==x)*(p.zi)}/{phi2*p.z}*(Y-mu.xz) # EIF for Y
+    EIF.X <- (p.zi)/{phi2*p.z}*(mu.xz-plugin.est)*( (X==x) - p.x.z ) # EIF for X
+
+    # functions for computing EIF.W and plugin psi(Z_j) ----------------- #
+
+    # integrand for calculating the EIF for W
+    integrand.EIF.W <- function(z,w){
+
+      phi1.z <- sapply(z, function(zi) mean(f.x.zw(x, zi,W, truncate_lower.X, truncate_upper.X)*f.mu.xzw(x, zi,W) ))
+      phi2.z <- sapply(z, function(zi) mean(f.x.zw(x, zi,W, truncate_lower.X, truncate_upper.X)))
+
+      plugin.est.z <- phi1.z/phi2.z
+
+      int.w <- z.density(z)*(f.x.zw(x, z, w, truncate_lower.X, truncate_upper.X)/phi2.z*(f.mu.xzw(x, z,w,c) - plugin.est.z) )
+
+      return(int.w)
+
+    }
+
+    # used to calculate the EIF for W and plugin estimator FASTLY
+    fast.EIF.W <- function(Zsim){
+
+      mu.matrix.sim <- matrix(NA, n, nMC)
+
+      for (i in 1:nMC) { # the columns are the predictions for p(Y_i|X=x,Z_j,W_i) for i from 1 to n, Z_j in Zsim
+        mu.matrix.sim[, i] <- f.mu.xzw(x, Zsim[i],W)
+      }
+
+      p.x.matrix.sim <- matrix(NA, n, nMC)
+
+      for (i in 1:nMC) { # the columns are the predictions for p(X=x|Z_j,W_i) for i from 1 to n, Z_j in Zsim
+        p.x.matrix.sim[, i] <- f.x.zw(x, Zsim[i],W, truncate_lower.X, truncate_upper.X)
+      }
+
+      phi1.sim <- colMeans(mu.matrix.sim*p.x.matrix.sim) # numerator of the plugin estimator
+      phi2.sim <- colMeans(p.x.matrix.sim) # denominator of the plugin estimator
+
+      plugin.est.sim <- phi1.sim/phi2.sim # plug-in estimate
+
+      # EIF.W <- matrix(phi1.Zsim.long, nrow=n, byrow = T)/phi2.Zsim - matrix(phi2.Zsim.long, nrow=n, byrow = T)*(plugin.est.z/phi2.Zsim)
+      EIF.W <- rowMeans(sweep(p.x.matrix.sim*sweep(mu.matrix.sim, 2, plugin.est.sim, "-"),2, phi2.sim,"/"))
+
+      return(list(EIF.W=EIF.W, plugin.est.z=plugin.est.sim))
+
+    }
+
+
+    if (!z.density.provided){ # if the z.density function is given
+
+      if (fast){
+
+        if(verbose){cat("Fast integration used. Integration computed with Monte Carlo integration method.")}
+
+        Zsim <- sampleFromDensity(z.density, nMC, range(Z))
+
+        fast.object <- fast.EIF.W(Zsim)
+
+        EIF.W <- fast.object$EIF.W
+
+
+      }else{
+
+        if(verbose){cat("Integration computed with integrate() function. This step may take a while.\n If you want to speed up the process, set fast=TRUE.")}
+
+        EIF.W <- unlist(lapply(1:n, function(i) integrate(integrand.EIF.W, lower = minZ, upper = maxZ, w=W[i,])$value))
+
+      }
+
+      EIF <- EIF.Y + EIF.X + EIF.W
+
+      if(verbose){cat("Density function of Z is provided. \n Influence function and plug-in estimator computed using the given density function of Z.")}
+
+    }else{ # if the z.density function is NOT given
+
+      EIF.W <- Reduce(`+`, lapply(1:n, function(i) f.x.zw(x, Z[i],W, truncate_lower.X, truncate_upper.X)/phi2[i]*(f.mu.xzw(x, Z[i],W) - plugin.est[i])    ))/n
+
+      EIF <- EIF.Y + EIF.X + EIF.W
+
+      if(verbose){cat("Density function of Z is not provided. Influence function and plug-in estimator computed via density estimation.")}
+
+    }
+
+    # confidence interval
+    lower.ci <- estimated-1.96*sqrt(mean(EIF^2)/n)
+    upper.ci <- estimated+1.96*sqrt(mean(EIF^2)/n)
+
+    return(list(estimated=estimated, EIF=EIF, EIF.Y=EIF.Y, EIF.X=EIF.X, EIF.W=EIF.W, lower.ci=lower.ci, upper.ci=upper.ci))
+
+
+  }
 
 
     # if Z is binary, return three estimating equation based estimators:
@@ -761,6 +882,14 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
       equation.out <- list(out.z1=out.z1, out.z0=out.z0, out.all.z=out.all.z)
 
+    }else{
+
+      if(verbose){cat(paste0('Z is continuous. Computing estimating equation estimator at the ',ifelse(!z.density.provided,'given','estimated'),' density function of Z.'))}
+
+      out.all.z <- f.equation.xz_nonbinaryZ(x, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z, p.z)
+
+      equation.out <- list(out.all.z=out.all.z)
+
     }
 
   # when Z is continuous, the estimating equation based estimator is the same as the one-step estimator
@@ -776,12 +905,12 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
     f.tmle.xz_binaryZ <- function(x,z, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z){
 
       # initialize estimates
-      p.x.z <- f.x.zw(x, z,W,C, truncate_lower.X, truncate_upper.X) # propensity score
+      p.x.z <- f.x.zw(x, z,W, truncate_lower.X, truncate_upper.X) # propensity score
       p.z <- f.z(z, truncate_lower.Z, truncate_upper.Z) # z-density
-      mu.xz <- f.mu.xzw(x, z,W,C) # outcome regression
+      mu.xz <- f.mu.xzw(x, z,W) # outcome regression
 
       #############################
-      # update mu: E(Y|X=x,Z=z,W,C)
+      # update mu: E(Y|X=x,Z=z,W)
       #############################
 
       # weight.Y <- {(X==x)*(Z==z)}/{mean(p.x.z)*p.z} # weight for Y
@@ -799,7 +928,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
           maxY <- max(Y)
 
           Y <- (Y-minY)/(maxY-minY) # rescale Y to [0,1]
-          mu.xz <- f.mu.xzw.bounded(x, z,W,C) # outcome regression
+          mu.xz <- f.mu.xzw.bounded(x, z,W) # outcome regression
 
           mu.xz[mu.xz<0] <- 0.001
           mu.xz[mu.xz>1] <- 0.999
@@ -902,9 +1031,9 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
       phi2 <- mean(p.x.z) # denominator of the plugin estimator
 
       # EIF
-      EIF.Y <- {(X==x)*(Z==z)}/{phi2*p.z}*(Y-mu.xz) # EIF for Y
-      EIF.X <- (Z==z)/{phi2*p.z}*(mu.xz-estimated)*( (X==x) - p.x.z ) # EIF for X
-      EIF.W <- 1/phi2*{mu.xz*p.x.z - estimated*p.x.z}
+      EIF.Y <- {(X==x)*(Z==z)}/{mean(kappa2_plus_phi2)*p.z}*(Y-mu.xz) # EIF for Y
+      EIF.X <- (Z==z)/{mean(kappa2_plus_phi2)*p.z}*(mu.xz-estimated)*( (X==x) - p.x.z ) # EIF for X
+      EIF.W <- 1/mean(kappa2_plus_phi2)*{mu.xz*p.x.z - estimated*p.x.z}
 
       EIF <- EIF.Y + EIF.X + EIF.W
 
@@ -925,21 +1054,21 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
   f.tmle.x_nonbinaryZ <- function(x, truncate_lower.X, truncate_upper.X ,truncate_lower.Z, truncate_upper.Z,p.z, p.zi){
 
     # initialize estimates
-    p.x.z <- f.x.zw(x, Z,W,C, truncate_lower.X, truncate_upper.X) # propensity score
-    mu.xz <- f.mu.xzw(x, Z,W,C) # outcome regression
+    p.x.z <- f.x.zw(x, Z,W, truncate_lower.X, truncate_upper.X) # propensity score
+    mu.xz <- f.mu.xzw(x, Z,W) # outcome regression
 
-    # make prediction for p(Y_i|X=x,Z_j,W_i,C_i) for both i and j from 1 to n
+    # make prediction for p(Y_i|X=x,Z_j,W_i) for both i and j from 1 to n
     mu.matrix <- matrix(NA, n, n)
 
-    for (i in 1:n) { # the columns are the predictions for p(Y_i|X=x,Z_j,W_i,C_i) for i from 1 to n
-      mu.matrix[, i] <- f.mu.xzw(x, Z[i],W,C)
+    for (i in 1:n) { # the columns are the predictions for p(Y_i|X=x,Z_j,W_i) for i from 1 to n
+      mu.matrix[, i] <- f.mu.xzw(x, Z[i],W)
     }
 
-    # make prediction for p(X=x|Z_j,W_i,C_i) for both i and j from 1 to n
+    # make prediction for p(X=x|Z_j,W_i) for both i and j from 1 to n
     p.x.matrix <- matrix(NA, n, n)
 
-    for (i in 1:n) { # the columns are the predictions for p(X=x|Z_j,W_i,C_i) for i from 1 to n
-      p.x.matrix[, i] <- f.x.zw(x, Z[i],W,C, truncate_lower.X, truncate_upper.X)
+    for (i in 1:n) { # the columns are the predictions for p(X=x|Z_j,W_i)for i from 1 to n
+      p.x.matrix[, i] <- f.x.zw(x, Z[i],W, truncate_lower.X, truncate_upper.X)
     }
 
     phi1 <- colMeans(mu.matrix*p.x.matrix) # numerator of the plugin estimator
@@ -948,7 +1077,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
     plugin.est <- phi1/phi2 # plug-in estimate
 
     ## create mu.matrx and p.x.matrix for Zsim
-    if(is.null(z.density)){
+    if(z.density.provided){
 
       Zsim <- sample(Z, nMC, replace=TRUE) # sample Zsim from the observed data
 
@@ -961,14 +1090,14 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
     mu.matrix.sim <- matrix(NA, n, nMC)
 
-    for (i in 1:nMC) { # the columns are the predictions for p(Y_i|X=x,Z_j,W_i,C_i) for i from 1 to n, Z_j in Zsim
-      mu.matrix.sim[, i] <- f.mu.xzw(x, Zsim[i],W,C)
+    for (i in 1:nMC) { # the columns are the predictions for p(Y_i|X=x,Z_j,W_i) for i from 1 to n, Z_j in Zsim
+      mu.matrix.sim[, i] <- f.mu.xzw(x, Zsim[i],W)
     }
 
     p.x.matrix.sim <- matrix(NA, n, nMC)
 
-    for (i in 1:nMC) { # the columns are the predictions for p(X=x|Z_j,W_i,C_i) for i from 1 to n, Z_j in Zsim
-      p.x.matrix.sim[, i] <- f.x.zw(x, Zsim[i],W,C, truncate_lower.X, truncate_upper.X)
+    for (i in 1:nMC) { # the columns are the predictions for p(X=x|Z_j,W_i) for i from 1 to n, Z_j in Zsim
+      p.x.matrix.sim[, i] <- f.x.zw(x, Zsim[i],W, truncate_lower.X, truncate_upper.X)
     }
 
     phi1.sim <- colMeans(mu.matrix.sim*p.x.matrix.sim) # numerator of the plugin estimator
@@ -987,7 +1116,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
 
         ######################
-        # update p(X=1|Z=z,W,C)
+        # update p(X=1|Z=z,W)
         ######################
 
         EIF.X <- {(p.zi)*(mu.xz-plugin.est)}/{p.z*phi2}*( (X==x) - p.x.z )
@@ -1013,7 +1142,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
           ## update nuisance that depend on the propensity score
 
-          # update p(x|Z_j,W_i,C_i)
+          # update p(x|Z_j,W_i)
           for(j in 1:n){
 
             covariate.Xj <- (mu.matrix[,j]-plugin.est[j])/phi2[j]
@@ -1046,13 +1175,13 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
           iter.X <- iter.X + 1
 
-          if(verbose){cat("TMLE updating p(X|Z,W,C), iter:", iter.X, "EIF.X:", mean(EIF.X), "\n")}
+          if(verbose){cat("TMLE updating p(X|Z,W), iter:", iter.X, "EIF.X:", mean(EIF.X), "\n")}
 
         }
 
 
         #############################
-        # update mu: E(Y|X=x,Z=z,W,C)
+        # update mu: E(Y|X=x,Z=z,W)
         #############################
 
         weight.Y <- {(X==x)*(p.zi)}/{phi2*p.z} # weight for Y
@@ -1088,7 +1217,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
         iter.Y <- iter.Y + 1
 
-        if(verbose){cat("TMLE updating E(Y|X,Z,W,C), iter:", iter.Y, "EIF.X:", mean(EIF.Y), "\n")}
+        if(verbose){cat("TMLE updating E(Y|X,Z,W), iter:", iter.Y, "EIF.X:", mean(EIF.Y), "\n")}
 
       } # end of while loop over Y
 
@@ -1097,7 +1226,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
 
       ######################
-      # update p(X=1|Z=z,W,C)
+      # update p(X=1|Z=z,W)
       ######################
 
       EIF.X <- {(p.zi)*(mu.xz-plugin.est)}/{p.z*phi2}*( (X==x) - p.x.z )
@@ -1123,7 +1252,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
         ## update nuisance that depend on the propensity score
 
-        # update p(x|Z_j,W_i,C_i)
+        # update p(x|Z_j,W_i)
         for(j in 1:n){
 
           covariate.Xj <- (mu.matrix[,j]-plugin.est[j])/phi2[j]
@@ -1156,12 +1285,12 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
         iter.X <- iter.X + 1
 
-        if(verbose){cat("TMLE updating p(X|Z,W,C), iter:", iter.X, "EIF.X:", mean(EIF.X), "\n")}
+        if(verbose){cat("TMLE updating p(X|Z,W), iter:", iter.X, "EIF.X:", mean(EIF.X), "\n")}
 
       }
 
       #############################
-      # update mu: E(Y|X=x,Z=z,W,C)
+      # update mu: E(Y|X=x,Z=z,W)
       #############################
 
       weight.Y <- {(X==x)*(p.zi)}/{phi2*p.z} # weight for Y
@@ -1201,7 +1330,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
     EIF.Y <- {(X==x)*(p.zi)}/{phi2*p.z}*(Y-mu.xz) # EIF for Y
     EIF.X <- (p.zi)/{phi2*p.z}*(mu.xz-plugin.est)*( (X==x) - p.x.z ) # EIF for X
 
-    if (!is.null(z.density)){
+    if (!z.density.provided){
 
       EIF.W <- rowMeans(sweep(p.x.matrix.sim*sweep(mu.matrix.sim, 2, plugin.est.sim, "-"),2, phi2.sim,"/"))
 
@@ -1209,7 +1338,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
 
       estimated <- mean(EIF.Y+EIF.X+EIF.W) + mean(plugin.est.sim)
 
-      if(verbose){print("Density function of Z is provided. Influence function equals 0 at the tangent space of Z")}
+      if(verbose){print("Density function of Z is provided.")}
 
     }else{
 
@@ -1253,6 +1382,24 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
         out.z1$estimated <- out.z1$estimated*(maxY-minY)+minY
         out.z0$estimated <- out.z0$estimated*(maxY-minY)+minY
 
+        out.z1$EIF <- out.z1$EIF*(maxY-minY)
+        out.z0$EIF <- out.z0$EIF*(maxY-minY)
+
+        out.z1$EIF.Y <- out.z1$EIF.Y*(maxY-minY)
+        out.z0$EIF.Y <- out.z0$EIF.Y*(maxY-minY)
+
+        out.z1$EIF.X <- out.z1$EIF.X*(maxY-minY)
+        out.z0$EIF.X <- out.z0$EIF.X*(maxY-minY)
+
+        out.z1$EIF.W <- out.z1$EIF.W*(maxY-minY)
+        out.z0$EIF.W <- out.z0$EIF.W*(maxY-minY)
+
+        out.z1$lower.ci <- out.z1$estimated-1.96*sqrt(mean(out.z1$EIF^2)/n)
+        out.z0$lower.ci <- out.z0$estimated-1.96*sqrt(mean(out.z0$EIF^2)/n)
+
+        out.z1$upper.ci <- out.z1$estimated+1.96*sqrt(mean(out.z1$EIF^2)/n)
+        out.z0$upper.ci <- out.z0$estimated+1.96*sqrt(mean(out.z0$EIF^2)/n)
+
       }
 
       ## using all levels of Z
@@ -1287,7 +1434,7 @@ napkin.a <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outco
   # 3. estimated equation
 
   ## if Z is not univariate binary, return 1 and 2 only because the estimating equation aligns with the one-step estimator
-  out <- if(binaryZ){list(Onestep=onestep.out, TMLE=tmle.out, EstEquation=equation.out)}else{list(Onestep=onestep.out, TMLE=tmle.out)}
+  out <- list(Onestep=onestep.out, TMLE=tmle.out, EstEquation=equation.out)
 
   return(out)
 

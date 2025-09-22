@@ -12,7 +12,6 @@ napkin.a(
   Z.variables,
   W.variables,
   outcome,
-  covariates,
   z.density = NULL,
   z.method = "dnorm",
   superlearner.Y = F,
@@ -63,20 +62,18 @@ If Z is continuous, it will return the combined estimate over all levels of Z.}
 
 \item{outcome}{A character string indicating the outcome variable}
 
-\item{covariates}{A character vector indicating the pre-treatment covariates in the napkin graph.}
-
 \item{z.density}{A argument that takes the user specified function for estimating the density of Z.}
 
-\item{z.method}{A character string indicating the method used to estimate the conditional density of p(Z|W,C). There are two options: 'dnorm' and 'np'. The default is 'dnorm'.
+\item{z.method}{A character string indicating the method used to estimate the conditional density of p(Z|W). There are two options: 'dnorm' and 'np'. The default is 'dnorm'.
 If Z is binary, regression based method will be adopted. The formula of the regression can be specified by \code{formula.Z}.
-If Z is continuous, the \code{z.method} method will be adopted. The \code{dnorm} method assumes that the conditional density of Z given W and C is normal.
-The \code{np} method estimates the conditional density of Z given W and C via non-parametric method via the \link[np]{np} package.}
+If Z is continuous, the \code{z.method} method will be adopted. The \code{dnorm} method assumes that the conditional density of Z given W is normal.
+The \code{np} method estimates the conditional density of Z given W via non-parametric method via the \link[np]{np} package.}
 
 \item{superlearner.Y}{A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the outcome regression.}
 
 \item{superlearner.X}{A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the propensity score.}
 
-\item{superlearner.Z}{A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the conditional density p(Z|W,C) when Z is binary.}
+\item{superlearner.Z}{A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the conditional density p(Z|W) when Z is binary.}
 
 \item{crossfit}{A logical indicator determines whether crossfitting is adopted for SuperLearner. If crossfit is set to TRUE, the data is split into K folds as specified by the \code{K} parameter.}
 
@@ -86,7 +83,7 @@ The \code{np} method estimates the conditional density of Z given W and C via no
 
 \item{lib.X}{A character vector specifying the library of algorithms to be used in the SuperLearner for propensity score estimation.}
 
-\item{lib.Z}{A character vector specifying the library of algorithms to be used in the SuperLearner for estimating the conditional density of Z given W and C.}
+\item{lib.Z}{A character vector specifying the library of algorithms to be used in the SuperLearner for estimating the conditional density of Z given W.}
 
 \item{n.iter}{The maximum number of iterations for the iterative update of the nuisances in TMLE. The default value is 500.}
 
@@ -97,7 +94,7 @@ If the absolute of the mean of efficient influence function is less than cvg.cri
 
 \item{formula.X}{Regression formula for the propensity score regression of A on it's Markov pillow. The default is 'X ~ .'.}
 
-\item{formula.Z}{Regression formula for the conditional density of Z given W and C. The default is 'Z ~ .'.}
+\item{formula.Z}{Regression formula for the conditional density of Z given W. The default is 'Z ~ .'.}
 
 \item{linkY_binary}{The link function used for outcome regression of Y on it's Markov pillow when Y is binary and superlearner is not sued. The default is the 'logit' link.}
 
@@ -109,9 +106,9 @@ If the absolute of the mean of efficient influence function is less than cvg.cri
 
 \item{truncate_upper.X}{The upper bound for truncation of the propensity score. The default is 1, which means no truncation.}
 
-\item{truncate_lower.Z}{The lower bound for truncation of the conditional density of Z given W and C. The default is 0, which means no truncation.}
+\item{truncate_lower.Z}{The lower bound for truncation of the conditional density of Z given W. The default is 0, which means no truncation.}
 
-\item{truncate_upper.Z}{The upper bound for truncation of the conditional density of Z given W and C. The default is 1, which means no truncation.}
+\item{truncate_upper.Z}{The upper bound for truncation of the conditional density of Z given W. The default is 1, which means no truncation.}
 
 \item{minZ}{The lower bound used for performing integration of Z when Z is continuous. The default is -Inf.}
 
@@ -147,7 +144,7 @@ In assuming logistic regression, the \code{dnorm} method further assume the logi
 \examples{
 # E(Y(1)) estimation.
 res <- napkin.a(x=1, z = NULL, data=data_Zbinary_Ycontinuous,
-treatment="X", Z.variables="Z", W.variables="W", outcome="Y", covariates="C",
-formula.Y="Y ~ C + X*Z*W", formula.X="X ~ Z*W", formula.Z="Z~.",
+treatment="X", Z.variables="Z", W.variables="W", outcome="Y",
+formula.Y="Y ~ X*Z*W", formula.X="X ~ Z*W", formula.Z="Z~.",
 link.X="identity", link.Z="logit")
 }

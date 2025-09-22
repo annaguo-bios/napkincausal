@@ -11,25 +11,24 @@
 #' If Z is continuous, it will return the combined estimate over all levels of Z.
 #' @param W.variables A character vector indicating the parents of Z.variables.
 #' @param outcome A character string indicating the outcome variable
-#' @param covariates A character vector indicating the pre-treatment covariates in the napkin graph.
 #' @param z.density A argument that takes the user specified function for estimating the density of Z.
-#' @param z.method A character string indicating the method used to estimate the conditional density of p(Z|W,C). There are two options: 'dnorm' and 'np'. The default is 'dnorm'.
+#' @param z.method A character string indicating the method used to estimate the conditional density of p(Z|W). There are two options: 'dnorm' and 'np'. The default is 'dnorm'.
 #' If Z is binary, regression based method will be adopted. The formula of the regression can be specified by `formula.Z`.
-#' If Z is continuous, the `z.method` method will be adopted. The `dnorm` method assumes that the conditional density of Z given W and C is normal.
-#' The `np` method estimates the conditional density of Z given W and C via non-parametric method via the \link[np]{np} package.
+#' If Z is continuous, the `z.method` method will be adopted. The `dnorm` method assumes that the conditional density of Z given W is normal.
+#' The `np` method estimates the conditional density of Z given W via non-parametric method via the \link[np]{np} package.
 #' @details In assuming normal distribution. The `dnorm` method estimates the mean of the normal distribution by fitting a linear regression model with only linear terms and no interaction terms and the variance of the normal distribution sample variance of the error term resulted from the linear regression model.
 #' In assuming logistic regression, the `dnorm` method further assume the logistic regression contains only linear terms and no interaction terms.
 #' @param superlearner.Y A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the outcome regression.
 #' @param superlearner.X A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the propensity score.
-#' @param superlearner.Z A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the conditional density p(Z|W,C) when Z is binary.
+#' @param superlearner.Z A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the conditional density p(Z|W) when Z is binary.
 #' @param crossfit A logical indicator determines whether crossfitting is adopted for SuperLearner. If crossfit is set to TRUE, the data is split into K folds as specified by the `K` parameter.
 #' @param K An integer specifying the number of folds for crossfitting.
 #' @param lib.Y A character vector specifying the library of algorithms to be used in the SuperLearner for outcome regression.
 #' @param lib.X A character vector specifying the library of algorithms to be used in the SuperLearner for propensity score estimation.
-#' @param lib.Z A character vector specifying the library of algorithms to be used in the SuperLearner for estimating the conditional density of Z given W and C.
+#' @param lib.Z A character vector specifying the library of algorithms to be used in the SuperLearner for estimating the conditional density of Z given W.
 #' @param formula.Y Regression formula for the outcome regression of Y on it's Markov pillow. The default is 'Y ~ .'.
 #' @param formula.X Regression formula for the propensity score regression of A on it's Markov pillow. The default is 'X ~ .'.
-#' @param formula.Z Regression formula for the conditional density of Z given W and C. The default is 'Z ~ .'.
+#' @param formula.Z Regression formula for the conditional density of Z given W. The default is 'Z ~ .'.
 #' @param linkY_binary The link function used for outcome regression of Y on it's Markov pillow when Y is binary and superlearner is not sued. The default is the 'logit' link.
 #' @param link.X The link function used for propensity score regression of X on it's Markov pillow if superlearner is not used. The default is the 'logit' link.
 #' @param link.Z The link function used for the regression of Z on it's Markov pillow if superlearner is not used. The default is the 'logit' link.
@@ -38,8 +37,8 @@
 #' @param n.iter The maximum number of iterations for the iterative update of the nuisances in TMLE. The default value is 500.
 #' @param truncate_lower.X The lower bound for truncation of the propensity score. The default is 0, which means no truncation.
 #' @param truncate_upper.X The upper bound for truncation of the propensity score. The default is 1, which means no truncation.
-#' @param truncate_lower.Z The lower bound for truncation of the conditional density of Z given W and C. The default is 0, which means no truncation.
-#' @param truncate_upper.Z The upper bound for truncation of the conditional density of Z given W and C. The default is 1, which means no truncation.
+#' @param truncate_lower.Z The lower bound for truncation of the conditional density of Z given W. The default is 0, which means no truncation.
+#' @param truncate_upper.Z The upper bound for truncation of the conditional density of Z given W. The default is 1, which means no truncation.
 #' @param minZ The lower bound used for performing integration of Z when Z is continuous. The default is -Inf.
 #' @param maxZ The upper bound used for performing integration of Z when Z is continuous. The default is Inf.
 #' @param verbose A logical indicator determines whether the function prints out detailed progress of the estimation. The default is TRUE.
@@ -59,8 +58,8 @@
 #' @examples
 #' # E(Y(1)) estimation.
 #' res <- napkin_est(x=1, z = NULL, data=data_Zbinary_Ycontinuous,
-#' treatment="X", Z.variables="Z", W.variables="W", outcome="Y", covariates="C",
-#' formula.Y="Y ~ C + X*Z*W", formula.X="X ~ Z*W", formula.Z="Z~.",
+#' treatment="X", Z.variables="Z", W.variables="W", outcome="Y",
+#' formula.Y="Y ~ X*Z*W", formula.X="X ~ Z*W", formula.Z="Z~.",
 #' link.X="identity", link.Z="logit")
 #' @importFrom dplyr %>% mutate select
 #' @importFrom MASS mvrnorm
@@ -72,7 +71,7 @@
 #' @importFrom np npcdensbw npcdens
 #' @export
 
-napkin_est <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome, covariates,
+napkin_est <- function(x, z = NULL,data,treatment, Z.variables, W.variables, outcome,
                        z.density=NULL, z.method="dnorm", superlearner.Y=F, superlearner.X=F,superlearner.Z=F,
                        crossfit=F,K=5,
                        lib.Y = c("SL.glm","SL.earth","SL.ranger","SL.mean"),
@@ -103,7 +102,7 @@ napkin_est <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
 
     ## TMLE estimator
 
-    out.a1 <- napkin.a(x[1], z =z, data, treatment, Z.variables, W.variables, outcome, covariates,
+    out.a1 <- napkin.a(x[1], z =z, data, treatment, Z.variables, W.variables, outcome,
                        z.density=z.density,z.method = z.method, superlearner.Y = superlearner.Y, superlearner.X = superlearner.X, superlearner.Z = superlearner.Z,
                        crossfit = crossfit, K = K,
                        lib.Y = lib.Y,
@@ -115,7 +114,7 @@ napkin_est <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
                        truncate_lower.X = truncate_lower.X, truncate_upper.X = truncate_upper.X,
                        truncate_lower.Z = truncate_lower.Z, truncate_upper.Z = truncate_upper.Z, minZ=minZ,maxZ=maxZ,verbose=verbose,fast=fast,nMC=nMC,boundedsubmodelY=boundedsubmodelY)
 
-    out.a0 <- napkin.a(x[2], z =z, data, treatment, Z.variables, W.variables, outcome, covariates,
+    out.a0 <- napkin.a(x[2], z =z, data, treatment, Z.variables, W.variables, outcome,
                        z.density=z.density,z.method = z.method, superlearner.Y = superlearner.Y, superlearner.X = superlearner.X, superlearner.Z = superlearner.Z,
                        crossfit = crossfit, K = K,
                        lib.Y = lib.Y,
@@ -136,13 +135,9 @@ napkin_est <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
     Onestep_output_Y1 <- out.a1$Onestep
     Onestep_output_Y0 <- out.a0$Onestep
 
-    if (univariate.binaryZ){
-
-      # run estimating equation
-      EstEquation_output_Y1 <- out.a1$EstEquation
-      EstEquation_output_Y0 <- out.a0$EstEquation
-
-    }
+    # run estimating equation
+    EstEquation_output_Y1 <- out.a1$EstEquation
+    EstEquation_output_Y0 <- out.a0$EstEquation
 
     # levels of z used for estimation
     level.z <- sub("^out", "", names(TMLE_output_Y1))
@@ -150,8 +145,8 @@ napkin_est <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
     level.z.number <- sub("^out\\.z", "", names(TMLE_output_Y1))
     level.z.number[level.z.number=="out.all.z"] <- "all z"
 
-    if (univariate.binaryZ){output <- vector("list", 3*length(level.z)+2)}else{output <- vector("list", 2*length(level.z)+2)}
-    if (univariate.binaryZ){estimators <- c('TMLE','Onestep','EstEquation')}else{estimators <- c('TMLE','Onestep')}
+    output <- vector("list", 3*length(level.z)+2)
+    estimators <- c('TMLE','Onestep','EstEquation')
 
     output[[1]] <- out.a1
     output[[2]] <- out.a0
@@ -221,7 +216,7 @@ napkin_est <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
 
   if (length(x)==1) { ## E(Y^1) estimate ==
 
-    out.a <- napkin.a(x, z =z, data, treatment, Z.variables, W.variables, outcome, covariates,
+    out.a <- napkin.a(x, z =z, data, treatment, Z.variables, W.variables, outcome,
                       z.density=z.density,z.method = z.method, superlearner.Y = superlearner.Y, superlearner.X = superlearner.X, superlearner.Z = superlearner.Z,
                       crossfit = crossfit, K = K,
                       lib.Y = lib.Y,
@@ -242,12 +237,8 @@ napkin_est <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
     # run onestep
     Onestep_output <- out.a$Onestep
 
-    if(univariate.binaryZ){
-
-      # run estimating equation
-      EstEquation_output <- out.a$EstEquation
-
-      }
+    # run estimating equation
+    EstEquation_output <- out.a$EstEquation
 
 
     # levels of z used for estimation
@@ -258,8 +249,8 @@ napkin_est <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
     level.z.number[level.z.number=="out.all.z"] <- "all z"
 
 
-    if (univariate.binaryZ){output <- vector("list", 3*length(level.z))}else{output <- vector("list", 2*length(level.z))}
-    if (univariate.binaryZ){estimators <- c('TMLE','Onestep','EstEquation')}else{estimators <- c('TMLE','Onestep')}
+    output <- vector("list", 3*length(level.z))
+    estimators <- c('TMLE','Onestep','EstEquation')
 
     # count of method
     count <- 1
@@ -286,8 +277,6 @@ napkin_est <- function(x, z = NULL,data,treatment, Z.variables, W.variables, out
     return(output)
 
   } # end of E(Y(x)) estimate
-
-
 
 
 
