@@ -1,2 +1,12 @@
 .Rproj.user
 inst/doc
+.DS_Store
+.!*.DS_Store
+.Rhistory
+.RData
+.Ruserdata
+.Rbuildignore
+*.Rproj
+..Rcheck/
+*.Rcheck/
+*.tar.gz
