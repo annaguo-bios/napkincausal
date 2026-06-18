@@ -12,34 +12,42 @@ napkin_est(
   Z.variables,
   W.variables,
   outcome,
+  covariates = NULL,
   z.density = NULL,
-  z.method = "dnorm",
+  z_w.method = "dnorm",
   superlearner.Y = F,
   superlearner.X = F,
   superlearner.Z = F,
+  superlearner.W = F,
   crossfit = F,
   K = 5,
   lib.Y = c("SL.glm", "SL.earth", "SL.ranger", "SL.mean"),
   lib.X = c("SL.glm", "SL.earth", "SL.ranger", "SL.mean"),
   lib.Z = c("SL.glm", "SL.earth", "SL.ranger", "SL.mean"),
+  lib.W = c("SL.glm", "SL.earth", "SL.ranger", "SL.mean"),
   n.iter = 500,
   cvg.criteria = 0.01,
   formula.Y = "Y ~ .",
   formula.X = "X ~ .",
   formula.Z = "Z~.",
+  formula.W = "W ~ .",
   linkY_binary = "logit",
   link.X = "logit",
   link.Z = "logit",
+  link.W = "logit",
   truncate_lower.X = 0,
   truncate_upper.X = 1,
   truncate_lower.Z = 0,
   truncate_upper.Z = 1,
+  truncate_lower.W = 0,
+  truncate_upper.W = 1,
   minZ = -Inf,
   maxZ = Inf,
   verbose = T,
   fast = T,
   nMC = 5000,
-  boundedsubmodelY = F
+  boundedsubmodelY = F,
+  use.kappa2.aipw = F
 )
 }
 \arguments{
@@ -62,11 +70,13 @@ If Z is continuous, it will return the combined estimate over all levels of Z.}
 
 \item{outcome}{A character string indicating the outcome variable}
 
+\item{covariates}{Optional character vector indicating baseline covariates C. If non-NULL, the covariate-aware estimator \code{napkin.a.covariate()} is used.}
+
 \item{z.density}{A argument that takes the user specified function for estimating the density of Z.}
 
-\item{z.method}{A character string indicating the method used to estimate the conditional density of p(Z|W). There are two options: 'dnorm' and 'np'. The default is 'dnorm'.
+\item{z_w.method}{A character string indicating the method used to estimate the conditional density of p(Z|W). There are two options: 'dnorm' and 'np'. The default is 'dnorm'.
 If Z is binary, regression based method will be adopted. The formula of the regression can be specified by \code{formula.Z}.
-If Z is continuous, the \code{z.method} method will be adopted. The \code{dnorm} method assumes that the conditional density of Z given W is normal.
+If Z is continuous, the \code{z_w.method} method will be adopted. The \code{dnorm} method assumes that the conditional density of Z given W is normal.
 The \code{np} method estimates the conditional density of Z given W via non-parametric method via the \link[np]{np} package.}
 
 \item{superlearner.Y}{A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the outcome regression.}
@@ -74,6 +84,8 @@ The \code{np} method estimates the conditional density of Z given W via non-para
 \item{superlearner.X}{A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the propensity score.}
 
 \item{superlearner.Z}{A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the conditional density p(Z|W) when Z is binary.}
+
+\item{superlearner.W}{A logical indicator determines whether SuperLearner is adopted for estimating the conditional probability p(W|C) when covariates are supplied.}
 
 \item{crossfit}{A logical indicator determines whether crossfitting is adopted for SuperLearner. If crossfit is set to TRUE, the data is split into K folds as specified by the \code{K} parameter.}
 
@@ -84,6 +96,8 @@ The \code{np} method estimates the conditional density of Z given W via non-para
 \item{lib.X}{A character vector specifying the library of algorithms to be used in the SuperLearner for propensity score estimation.}
 
 \item{lib.Z}{A character vector specifying the library of algorithms to be used in the SuperLearner for estimating the conditional density of Z given W.}
+
+\item{lib.W}{A character vector specifying the library of algorithms to be used in the SuperLearner for estimating W given covariates C.}
 
 \item{n.iter}{The maximum number of iterations for the iterative update of the nuisances in TMLE. The default value is 500.}
 
@@ -96,11 +110,15 @@ If the absolute of the mean of efficient influence function is less than cvg.cri
 
 \item{formula.Z}{Regression formula for the conditional density of Z given W. The default is 'Z ~ .'.}
 
+\item{formula.W}{Regression formula for W given covariates C when covariates are supplied. The default is 'W ~ .'.}
+
 \item{linkY_binary}{The link function used for outcome regression of Y on it's Markov pillow when Y is binary and superlearner is not sued. The default is the 'logit' link.}
 
 \item{link.X}{The link function used for propensity score regression of X on it's Markov pillow if superlearner is not used. The default is the 'logit' link.}
 
 \item{link.Z}{The link function used for the regression of Z on it's Markov pillow if superlearner is not used. The default is the 'logit' link.}
+
+\item{link.W}{The link function used for the regression of W on covariates C if superlearner is not used. The default is the 'logit' link.}
 
 \item{truncate_lower.X}{The lower bound for truncation of the propensity score. The default is 0, which means no truncation.}
 
@@ -109,6 +127,10 @@ If the absolute of the mean of efficient influence function is less than cvg.cri
 \item{truncate_lower.Z}{The lower bound for truncation of the conditional density of Z given W. The default is 0, which means no truncation.}
 
 \item{truncate_upper.Z}{The upper bound for truncation of the conditional density of Z given W. The default is 1, which means no truncation.}
+
+\item{truncate_lower.W}{The lower bound for truncation of p(W=1|C) when covariates are supplied. The default is 0.}
+
+\item{truncate_upper.W}{The upper bound for truncation of p(W=1|C) when covariates are supplied. The default is 1.}
 
 \item{minZ}{The lower bound used for performing integration of Z when Z is continuous. The default is -Inf.}
 
@@ -121,6 +143,8 @@ If the absolute of the mean of efficient influence function is less than cvg.cri
 \item{nMC}{The number of Monte Carlo samples used for integration when \code{fast} is set to TRUE The default is 5000.}
 
 \item{boundedsubmodelY}{An indicator for whether the bounded submodel is used for targeting the outcome regression when Z is discrete. The default is FALSE.}
+
+\item{use.kappa2.aipw}{A logical indicator for whether the covariate-aware estimator uses the AIPW version of kappa2(C) in denominators. The default is FALSE.}
 }
 \value{
 Function outputs a list containing TMLE results (and Onestep results if 'onestep=T' is specified). When 'a=c(1,0)', function also outputs corresponding results on \eqn{E(Y^1)} and \eqn{E(Y^0)}:

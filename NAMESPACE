@@ -2,6 +2,7 @@
 
 export(calculate_density_dnorm)
 export(napkin.a)
+export(napkin.a.covariate)
 export(napkin_est)
 importFrom(MASS,mvrnorm)
 importFrom(RVCompare,sampleFromDensity)

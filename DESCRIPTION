@@ -6,11 +6,13 @@ Authors@R:
        email = "guo.anna617@gmail.com",
        role = c("aut", "cre"),
        comment = c(GitHub = "https://github.com/annaguo-bios"))
+Author: Anna Guo [aut, cre] (GitHub: https://github.com/annaguo-bios)
+Maintainer: Anna Guo <guo.anna617@gmail.com>
 Description: An R package for estimating causal effects in the Napkin graph. It implements the doubly robust onestep estimator and Targeted Maximum Likelihood Estimation (TMLE) estimator. It is able to incorporate machine learning algorithms via SuperLearn and allows sample splitting in model training.
 License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.2.3
+RoxygenNote: 7.3.3.9000
 Imports:
     dplyr,
     SuperLearner,
@@ -27,4 +29,3 @@ Suggests:
     knitr,
     rmarkdown
 VignetteBuilder: knitr
-

@@ -13,7 +13,7 @@ napkin.a(
   W.variables,
   outcome,
   z.density = NULL,
-  z.method = "dnorm",
+  z_w.method = "dnorm",
   superlearner.Y = F,
   superlearner.X = F,
   superlearner.Z = F,
@@ -64,9 +64,9 @@ If Z is continuous, it will return the combined estimate over all levels of Z.}
 
 \item{z.density}{A argument that takes the user specified function for estimating the density of Z.}
 
-\item{z.method}{A character string indicating the method used to estimate the conditional density of p(Z|W). There are two options: 'dnorm' and 'np'. The default is 'dnorm'.
+\item{z_w.method}{A character string indicating the method used to estimate the conditional density of p(Z|W). There are two options: 'dnorm' and 'np'. The default is 'dnorm'.
 If Z is binary, regression based method will be adopted. The formula of the regression can be specified by \code{formula.Z}.
-If Z is continuous, the \code{z.method} method will be adopted. The \code{dnorm} method assumes that the conditional density of Z given W is normal.
+If Z is continuous, the \code{z_w.method} method will be adopted. The \code{dnorm} method assumes that the conditional density of Z given W is normal.
 The \code{np} method estimates the conditional density of Z given W via non-parametric method via the \link[np]{np} package.}
 
 \item{superlearner.Y}{A logical indicator determines whether SuperLearner via the \link[SuperLearner]{SuperLearner} function is adopted for estimating the outcome regression.}
